@@ -138,7 +138,7 @@ def get_db():
 def db_execute(query, params=(), fetchone=False, fetchall=False):
     db = get_db()
     try:
-        if USE_POSTGRES and PG_DRIVER == "pg8000":
+        if USE_POSTGRES:
             query = query.replace("?", "%s")
         cursor = db.cursor()
         cursor.execute(query, params)
