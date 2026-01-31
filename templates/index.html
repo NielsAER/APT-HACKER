@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XPOSE APT AI v7.4</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <style>
+        body { font-family: system-ui, sans-serif; background-color: #0a0a0f; }
+        .glass { background: rgba(15, 15, 25, 0.95); border: 1px solid rgba(255,255,255,0.1); }
+        
+        /* Code blocks with copy button */
+        .prose pre { position: relative; background: #161b22; border-radius: 8px; margin: 1rem 0; }
+        .prose pre code { display: block; padding: 1rem; padding-top: 2.5rem; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+        .code-header { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; background: #21262d; border-radius: 8px 8px 0 0; border-bottom: 1px solid #30363d; }
+        .code-lang { font-size: 12px; color: #8b949e; font-weight: 500; }
+        .copy-btn { font-size: 12px; color: #8b949e; background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: all 0.2s; }
+        .copy-btn:hover { background: #30363d; color: #fff; }
+        .copy-btn.copied { color: #3fb950; }
+        
+        /* Prose styling */
+        .prose { color: #c9d1d9; }
+        .prose h2 { color: #ef4444; border-bottom: 1px solid #333; padding-bottom: 0.5rem; margin-top: 1.5rem; font-size: 1.25rem; }
+        .prose h3 { color: #f97316; margin-top: 1rem; font-size: 1.1rem; }
+        .prose h4 { color: #22c55e; font-size: 1rem; }
+        .prose strong { color: #fbbf24; }
+        .prose ul, .prose ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+        .prose li { margin: 0.25rem 0; }
+        .prose a { color: #58a6ff; }
+        .prose blockquote { border-left: 3px solid #f97316; padding-left: 1rem; color: #8b949e; }
+        
+        /* Phase sections */
+        .phase-section { border-left: 3px solid #ef4444; padding-left: 1rem; margin: 1rem 0; }
+        .phase-section.recon { border-color: #3b82f6; }
+        .phase-section.initial { border-color: #22c55e; }
+        .phase-section.lateral { border-color: #f97316; }
+        .phase-section.priv { border-color: #a855f7; }
+        .phase-section.exfil { border-color: #ef4444; }
+        
+        /* Textarea auto-resize */
+        #messageInput { resize: none; min-height: 48px; max-height: 200px; }
+        
+        .tab-btn.active { background: #1f2937; border-bottom: 2px solid #ef4444; }
+    </style>
+</head>
+<body class="min-h-screen text-gray-100">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <div class="w-72 glass border-r border-gray-800 flex flex-col">
+            <div class="p-4 border-b border-gray-800">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-red-600 flex items-center justify-center">
+                        <i class="fas fa-crosshairs text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg">XPOSE APT AI</h1>
+                        <p class="text-xs text-gray-500">v7.4 Nation-State</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-4 space-y-2 border-b border-gray-800">
+                <button onclick="showNewProject()" class="w-full py-2.5 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition flex items-center justify-center gap-2">
+                    <i class="fas fa-crosshairs"></i> New APT Simulation
+                </button>
+                <button onclick="showPhishingModal()" class="w-full py-2 px-4 bg-orange-600 hover:bg-orange-700 rounded-lg text-sm transition flex items-center justify-center gap-2">
+                    <i class="fas fa-envelope"></i> Social Engineering
+                </button>
+                <button onclick="showOsintModal()" class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm transition flex items-center justify-center gap-2">
+                    <i class="fas fa-search"></i> Advanced OSINT
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-2">
+                <div class="text-xs text-gray-500 uppercase px-2 py-2">Operations</div>
+                <div id="projectsList"></div>
+            </div>
+            
+            <div class="p-4 border-t border-gray-800 text-xs">
+                <div id="statusIndicators"></div>
+                <div class="mt-2"><span id="llmStatus" class="text-gray-500">Connecting...</span></div>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+            <!-- Header -->
+            <div class="h-14 glass border-b border-gray-800 flex items-center justify-between px-6">
+                <div id="projectTitle" class="font-medium">Select or create an operation</div>
+                <div class="flex gap-2">
+                    <button onclick="refreshOSINT()" id="refreshBtn" class="hidden px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-sm transition">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh OSINT
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Chat Area -->
+            <div class="flex-1 flex overflow-hidden">
+                <div class="flex-1 flex flex-col">
+                    <div id="chatMessages" class="flex-1 overflow-y-auto p-6 space-y-4">
+                        <div class="text-center text-gray-500 py-20">
+                            <i class="fas fa-skull-crossbones text-6xl mb-4 text-red-600"></i>
+                            <p class="text-xl font-semibold">Nation-State Attack Simulation Platform</p>
+                            <p class="text-sm mt-2 text-gray-600">Create an operation to begin</p>
+                            <div class="mt-6 text-left max-w-lg mx-auto bg-gray-900/50 rounded-lg p-4 text-sm space-y-1">
+                                <p class="text-green-400 mb-2"><i class="fas fa-terminal mr-2"></i>Example commands:</p>
+                                <p class="text-gray-400">"Give me 3 complete attack paths with exact commands"</p>
+                                <p class="text-gray-400">"Craft a spearphishing campaign targeting CFO"</p>
+                                <p class="text-gray-400">"Generate credential harvesting scripts"</p>
+                                <p class="text-gray-400">"How do I move laterally from this Citrix foothold?"</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Input Area -->
+                    <div class="p-4 border-t border-gray-800">
+                        <div class="flex gap-3 items-end">
+                            <div class="flex-1 relative">
+                                <textarea id="messageInput" 
+                                    class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 pr-12 text-green-400 placeholder-gray-600 font-mono text-sm"
+                                    placeholder="Enter command... (Shift+Enter for new line)"
+                                    rows="1"></textarea>
+                                <label class="absolute right-3 bottom-3 cursor-pointer text-gray-500 hover:text-gray-300 transition" title="Upload any file (images, documents, configs...)">
+                                    <i class="fas fa-paperclip"></i>
+                                    <input type="file" id="fileInput" class="hidden" accept="*/*">
+                                </label>
+                            </div>
+                            <button onclick="sendMessage()" class="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                        <div id="filePreview" class="hidden mt-2 p-2 bg-gray-800 rounded-lg text-sm">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <img id="imagePreview" class="hidden h-16 w-16 object-cover rounded" />
+                                    <i id="fileIcon" class="fas fa-file text-gray-400"></i>
+                                    <span id="fileName" class="text-gray-300"></span>
+                                </div>
+                                <button onclick="clearFile()" class="text-gray-500 hover:text-red-400"><i class="fas fa-times"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Impact Panel -->
+                <div id="impactPanel" class="w-96 glass border-l border-gray-800 overflow-y-auto hidden">
+                    <div class="p-4 border-b border-gray-800 flex items-center justify-between">
+                        <h3 class="font-semibold"><i class="fas fa-chart-line text-red-500 mr-2"></i>Impact Analysis</h3>
+                    </div>
+                    <div id="impactContent" class="p-4 space-y-4"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- New Project Modal -->
+    <div id="newProjectModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+        <div class="glass rounded-xl w-full max-w-md p-6 m-4">
+            <h2 class="text-xl font-bold mb-4"><i class="fas fa-crosshairs text-red-500 mr-2"></i>New APT Simulation</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Target Company/Domain</label>
+                    <input type="text" id="targetInput" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 focus:border-red-500 outline-none" placeholder="e.g., moderna.be">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Operation Name</label>
+                    <input type="text" id="projectNameInput" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 focus:border-red-500 outline-none" placeholder="Operation Dark Storm">
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button onclick="hideNewProject()" class="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 rounded-lg transition">Cancel</button>
+                <button onclick="createProject()" id="createBtn" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition">
+                    <i class="fas fa-rocket mr-2"></i>Launch
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Advanced OSINT Modal -->
+    <div id="osintModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 overflow-y-auto py-10">
+        <div class="glass rounded-xl w-full max-w-4xl p-6 m-4">
+            <h2 class="text-xl font-bold mb-4"><i class="fas fa-search text-blue-500 mr-2"></i>Advanced OSINT Toolkit</h2>
+            
+            <!-- Tabs -->
+            <div class="flex border-b border-gray-700 mb-4">
+                <button onclick="showOsintTab('dorks')" class="tab-btn active px-4 py-2 text-sm" data-tab="dorks">Google Dorks</button>
+                <button onclick="showOsintTab('subdomains')" class="tab-btn px-4 py-2 text-sm" data-tab="subdomains">Subdomains</button>
+                <button onclick="showOsintTab('suppliers')" class="tab-btn px-4 py-2 text-sm" data-tab="suppliers">Suppliers</button>
+                <button onclick="showOsintTab('tech')" class="tab-btn px-4 py-2 text-sm" data-tab="tech">Tech Stack</button>
+            </div>
+            
+            <!-- Google Dorks Tab -->
+            <div id="tab-dorks" class="osint-tab">
+                <div class="flex gap-2 mb-4">
+                    <input type="text" id="dorkDomain" class="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-2" placeholder="target-company.com">
+                    <button onclick="generateDorks()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition">Generate Dorks</button>
+                </div>
+                <div id="dorkResults" class="hidden space-y-4 max-h-96 overflow-y-auto"></div>
+            </div>
+            
+            <!-- Subdomains Tab -->
+            <div id="tab-subdomains" class="osint-tab hidden">
+                <div id="subdomainsContent" class="space-y-4 max-h-96 overflow-y-auto">
+                    <p class="text-gray-500">Select a project to view subdomains...</p>
+                </div>
+            </div>
+            
+            <!-- Suppliers Tab -->
+            <div id="tab-suppliers" class="osint-tab hidden">
+                <div id="suppliersContent" class="grid grid-cols-2 gap-4">
+                    <div>
+                        <h4 class="text-sm text-gray-400 mb-2">Impersonation Targets</h4>
+                        <div id="suppliersList" class="space-y-2 text-sm">
+                            <p class="text-gray-500">Run OSINT scan on a project first...</p>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="text-sm text-gray-400 mb-2">Detected Vendors</h4>
+                        <div id="detectedVendors" class="space-y-2 text-sm">
+                            <p class="text-gray-500">Run OSINT scan on a project first...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tech Stack Tab -->
+            <div id="tab-tech" class="osint-tab hidden">
+                <div id="techStack" class="grid grid-cols-3 gap-4">
+                    <p class="text-gray-500 col-span-3">Run OSINT scan on a project first...</p>
+                </div>
+            </div>
+            
+            <button onclick="hideOsintModal()" class="mt-4 w-full py-2.5 bg-gray-800 hover:bg-gray-700 rounded-lg transition">Close</button>
+        </div>
+    </div>
+    
+    <!-- Phishing Modal -->
+    <div id="phishingModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 overflow-y-auto py-10">
+        <div class="glass rounded-xl w-full max-w-5xl p-6 m-4">
+            <h2 class="text-xl font-bold mb-4"><i class="fas fa-envelope text-orange-500 mr-2"></i>Social Engineering Toolkit</h2>
+            
+            <div class="grid grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Template Type</label>
+                    <select id="templateType" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm">
+                        <option value="it_password">IT Password Reset</option>
+                        <option value="docusign">DocuSign Document</option>
+                        <option value="vendor_invoice">Vendor Invoice</option>
+                        <option value="hr_payroll">HR Payroll</option>
+                        <option value="mfa_reset">MFA Security Alert</option>
+                        <option value="shared_document">OneDrive Document</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Phishing Domain</label>
+                    <input type="text" id="attackerDomain" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm" placeholder="secure-login.com">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Sender Name</label>
+                    <input type="text" id="senderName" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm" placeholder="Sarah Johnson">
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Target Name</label>
+                    <input type="text" id="targetName" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm" placeholder="John Smith">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Target Company</label>
+                    <input type="text" id="targetCompany" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm" placeholder="Acme Corporation">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Target Email</label>
+                    <input type="text" id="targetEmail" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm" placeholder="john.smith@acme.com">
+                </div>
+            </div>
+            
+            <button onclick="generateTemplate()" class="w-full py-2.5 bg-orange-600 hover:bg-orange-700 rounded-lg mb-4 transition">
+                <i class="fas fa-magic mr-2"></i>Generate Template
+            </button>
+            
+            <div id="templatePreview" class="hidden">
+                <div class="bg-white rounded-lg overflow-hidden mb-4" style="max-height: 400px; overflow-y: auto;">
+                    <div id="emailPreview"></div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="copyHtml()" class="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm transition">
+                        <i class="fas fa-code mr-1"></i>Copy HTML
+                    </button>
+                    <button onclick="copySubject()" class="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm transition">
+                        <i class="fas fa-envelope mr-1"></i>Copy Subject
+                    </button>
+                    <button onclick="downloadEml()" class="flex-1 py-2 bg-orange-600 hover:bg-orange-700 rounded text-sm transition">
+                        <i class="fas fa-download mr-1"></i>Download .eml
+                    </button>
+                </div>
+            </div>
+            
+            <button onclick="hidePhishingModal()" class="mt-4 w-full py-2.5 bg-gray-800 hover:bg-gray-700 rounded-lg transition">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        var currentProject = null;
+        var currentTemplate = null;
+        var selectedFile = null;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            checkHealth();
+            loadProjects();
+            setupTextarea();
+            setupFileInput();
+            
+            // Configure marked
+            if (typeof marked !== 'undefined') {
+                marked.setOptions({ breaks: true, gfm: true });
+            }
+        });
+        
+        // Textarea handling - Shift+Enter = newline, Enter = send
+        function setupTextarea() {
+            var textarea = document.getElementById('messageInput');
+            textarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+                // Shift+Enter adds newline normally
+            });
+            
+            // Auto-resize
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+            });
+        }
+        
+        // File upload handling
+        var uploadedImageData = null;
+        var uploadedImageMime = null;
+        
+        function setupFileInput() {
+            document.getElementById('fileInput').addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    selectedFile = e.target.files[0];
+                    var ext = selectedFile.name.split('.').pop().toLowerCase();
+                    var isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext);
+                    
+                    document.getElementById('fileName').textContent = selectedFile.name + ' (' + formatFileSize(selectedFile.size) + ')';
+                    document.getElementById('filePreview').classList.remove('hidden');
+                    
+                    if (isImage) {
+                        // Show image preview
+                        var reader = new FileReader();
+                        reader.onload = function(ev) {
+                            document.getElementById('imagePreview').src = ev.target.result;
+                            document.getElementById('imagePreview').classList.remove('hidden');
+                            document.getElementById('fileIcon').classList.add('hidden');
+                        };
+                        reader.readAsDataURL(selectedFile);
+                    } else {
+                        document.getElementById('imagePreview').classList.add('hidden');
+                        document.getElementById('fileIcon').classList.remove('hidden');
+                        // Set appropriate icon
+                        var iconMap = {
+                            'pdf': 'fa-file-pdf text-red-400',
+                            'doc': 'fa-file-word text-blue-400',
+                            'docx': 'fa-file-word text-blue-400',
+                            'xls': 'fa-file-excel text-green-400',
+                            'xlsx': 'fa-file-excel text-green-400',
+                            'txt': 'fa-file-alt text-gray-400',
+                            'json': 'fa-file-code text-yellow-400',
+                            'xml': 'fa-file-code text-orange-400',
+                            'py': 'fa-file-code text-blue-400',
+                            'js': 'fa-file-code text-yellow-400',
+                            'sql': 'fa-database text-purple-400'
+                        };
+                        var iconClass = iconMap[ext] || 'fa-file text-gray-400';
+                        document.getElementById('fileIcon').className = 'fas ' + iconClass;
+                    }
+                }
+            });
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        function clearFile() {
+            selectedFile = null;
+            uploadedImageData = null;
+            uploadedImageMime = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('filePreview').classList.add('hidden');
+            document.getElementById('imagePreview').classList.add('hidden');
+            document.getElementById('imagePreview').src = '';
+        }
+        
+        // Modal functions
+        function showNewProject() { document.getElementById('newProjectModal').classList.remove('hidden'); }
+        function hideNewProject() { document.getElementById('newProjectModal').classList.add('hidden'); }
+        function showPhishingModal() { document.getElementById('phishingModal').classList.remove('hidden'); }
+        function hidePhishingModal() { document.getElementById('phishingModal').classList.add('hidden'); }
+        function showOsintModal() { 
+            document.getElementById('osintModal').classList.remove('hidden'); 
+            // Auto-load OSINT if project is selected
+            if (currentProject) {
+                loadProjectOsint();
+            }
+        }
+        function hideOsintModal() { document.getElementById('osintModal').classList.add('hidden'); }
+        
+        async function loadProjectOsint() {
+            if (!currentProject) return;
+            try {
+                var res = await fetch('/api/projects/' + currentProject.id + '/osint');
+                var osintRecord = await res.json();
+                if (osintRecord && osintRecord.data) {
+                    var osint = typeof osintRecord.data === 'string' ? JSON.parse(osintRecord.data) : osintRecord.data;
+                    
+                    // Pre-fill domain in dork input
+                    var domain = osint.metadata ? osint.metadata.domain : currentProject.target;
+                    document.getElementById('dorkDomain').value = domain || '';
+                    
+                    // Update subdomains tab
+                    updateSubdomainsTab(osint);
+                    
+                    // Update suppliers tab
+                    if (osint.suppliers) {
+                        updateSuppliersTab(osint.suppliers);
+                    }
+                    
+                    // Update tech tab
+                    if (osint.technology) {
+                        updateTechTab(osint.technology);
+                    }
+                    
+                    // Show dorks if available
+                    if (osint.google_dorks) {
+                        displayDorks(osint.google_dorks);
+                    }
+                }
+            } catch (e) {
+                console.error('Load OSINT error:', e);
+            }
+        }
+        
+        function updateSubdomainsTab(osint) {
+            var html = '';
+            
+            // Subdomains from crt.sh
+            var crtsh = osint.crtsh || [];
+            if (crtsh.length > 0) {
+                var uniqueSubs = new Set();
+                crtsh.forEach(function(c) {
+                    var names = (c.name_value || '').split('\\n');
+                    names.forEach(function(n) { if (n) uniqueSubs.add(n.toLowerCase()); });
+                });
+                var subsList = Array.from(uniqueSubs).sort();
+                
+                html += '<div class="bg-gray-900 rounded-lg p-3">' +
+                    '<div class="text-xs text-blue-400 font-semibold mb-2"><i class="fas fa-sitemap mr-1"></i>CERTIFICATE TRANSPARENCY (' + subsList.length + ' found)</div>' +
+                    '<div class="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto">';
+                subsList.slice(0, 100).forEach(function(sub) {
+                    var isHighValue = /citrix|vpn|owa|mail|remote|sso|login|admin|portal/.test(sub);
+                    html += '<div class="text-xs font-mono ' + (isHighValue ? 'text-red-400' : 'text-gray-400') + ' truncate" title="' + sub + '">' + 
+                        (isHighValue ? '<i class="fas fa-exclamation-triangle mr-1"></i>' : '') + sub + '</div>';
+                });
+                html += '</div></div>';
+            }
+            
+            // Shodan subdomains
+            var shodanSubs = osint.shodan && osint.shodan.domain ? osint.shodan.domain.subdomains || [] : [];
+            if (shodanSubs.length > 0) {
+                html += '<div class="bg-gray-900 rounded-lg p-3 mt-3">' +
+                    '<div class="text-xs text-purple-400 font-semibold mb-2"><i class="fas fa-search mr-1"></i>SHODAN DNS (' + shodanSubs.length + ' found)</div>' +
+                    '<div class="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto">';
+                shodanSubs.forEach(function(sub) {
+                    html += '<div class="text-xs font-mono text-gray-400 truncate">' + sub + '</div>';
+                });
+                html += '</div></div>';
+            }
+            
+            // Shodan hosts/services
+            var hosts = osint.shodan && osint.shodan.hosts ? osint.shodan.hosts.matches || [] : [];
+            if (hosts.length > 0) {
+                html += '<div class="bg-gray-900 rounded-lg p-3 mt-3">' +
+                    '<div class="text-xs text-green-400 font-semibold mb-2"><i class="fas fa-server mr-1"></i>EXPOSED SERVICES (' + hosts.length + ' found)</div>' +
+                    '<div class="space-y-1 max-h-48 overflow-y-auto">';
+                hosts.forEach(function(h) {
+                    html += '<div class="text-xs font-mono text-gray-400 flex items-center gap-2">' +
+                        '<span class="text-green-400">' + h.ip_str + '</span>' +
+                        '<span class="text-yellow-400">:' + h.port + '</span>' +
+                        '<span class="text-gray-500">' + (h.product || h.http && h.http.server || 'unknown') + '</span>' +
+                        '</div>';
+                });
+                html += '</div></div>';
+            }
+            
+            // Leaked credentials
+            var dehashed = osint.dehashed || {};
+            if (dehashed.total > 0) {
+                html += '<div class="bg-red-900/30 border border-red-800 rounded-lg p-3 mt-3">' +
+                    '<div class="text-xs text-red-400 font-semibold mb-2"><i class="fas fa-key mr-1"></i>LEAKED CREDENTIALS (' + dehashed.total + ' found)</div>' +
+                    '<div class="space-y-1 max-h-32 overflow-y-auto">';
+                (dehashed.entries || []).slice(0, 20).forEach(function(e) {
+                    html += '<div class="text-xs font-mono text-gray-400">' +
+                        '<span class="text-red-400">' + (e.email || 'N/A') + '</span>' +
+                        (e.password ? ' : <span class="text-yellow-400">' + e.password + '</span>' : '') +
+                        (e.database_name ? ' <span class="text-gray-600">(' + e.database_name + ')</span>' : '') +
+                        '</div>';
+                });
+                html += '</div></div>';
+            }
+            
+            // Emails from Hunter
+            var hunter = osint.hunter && osint.hunter.data ? osint.hunter.data : {};
+            var emails = hunter.emails || [];
+            if (emails.length > 0) {
+                html += '<div class="bg-gray-900 rounded-lg p-3 mt-3">' +
+                    '<div class="text-xs text-cyan-400 font-semibold mb-2"><i class="fas fa-envelope mr-1"></i>HARVESTED EMAILS (' + emails.length + ' found)</div>' +
+                    '<div class="space-y-1 max-h-32 overflow-y-auto">';
+                emails.slice(0, 30).forEach(function(e) {
+                    var isExec = e.type === 'executive' || e.seniority === 'executive';
+                    html += '<div class="text-xs font-mono ' + (isExec ? 'text-yellow-400' : 'text-gray-400') + '">' +
+                        (isExec ? '<i class="fas fa-star mr-1"></i>' : '') +
+                        e.value + (e.first_name ? ' (' + e.first_name + ' ' + (e.last_name || '') + ')' : '') +
+                        '</div>';
+                });
+                html += '</div></div>';
+            }
+            
+            if (!html) {
+                html = '<p class="text-gray-500">No OSINT data found. Create a project with a target domain first.</p>';
+            }
+            
+            document.getElementById('subdomainsContent').innerHTML = html;
+        }
+        
+        function displayDorks(dorks) {
+            var results = document.getElementById('dorkResults');
+            results.classList.remove('hidden');
+            
+            if (!dorks || !dorks.by_category) {
+                results.innerHTML = '<p class="text-yellow-400">No dorks available</p>';
+                return;
+            }
+            
+            var html = '<div class="text-sm text-gray-400 mb-3"><i class="fas fa-check text-green-500 mr-1"></i>' + dorks.total + ' Google dork queries available</div>';
+            for (var category in dorks.by_category) {
+                var queries = dorks.by_category[category];
+                html += '<div class="bg-gray-900 rounded-lg p-3 mb-3">' +
+                    '<div class="text-xs text-blue-400 font-semibold mb-2"><i class="fas fa-folder mr-1"></i>' + category.replace(/_/g, ' ').toUpperCase() + '</div>' +
+                    '<div class="space-y-1">';
+                queries.slice(0, 5).forEach(function(q) {
+                    var encoded = encodeURIComponent(q);
+                    html += '<div class="flex items-center gap-2 group">' +
+                        '<a href="https://www.google.com/search?q=' + encoded + '" target="_blank" class="text-xs text-gray-300 hover:text-blue-400 font-mono truncate flex-1">' + escapeHtml(q) + '</a>' +
+                        '<button onclick="copyToClipboard(\'' + escapeJs(q) + '\')" class="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white text-xs transition"><i class="fas fa-copy"></i></button>' +
+                        '<a href="https://www.google.com/search?q=' + encoded + '" target="_blank" class="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-blue-400 text-xs transition"><i class="fas fa-external-link-alt"></i></a>' +
+                        '</div>';
+                });
+                html += '</div></div>';
+            }
+            results.innerHTML = html;
+        }
+        
+        function showOsintTab(tab) {
+            document.querySelectorAll('.osint-tab').forEach(function(el) { el.classList.add('hidden'); });
+            document.querySelectorAll('#osintModal .tab-btn').forEach(function(el) { el.classList.remove('active'); });
+            document.getElementById('tab-' + tab).classList.remove('hidden');
+            document.querySelector('#osintModal .tab-btn[data-tab="' + tab + '"]').classList.add('active');
+        }
+        
+        // Google Dorks
+        async function generateDorks() {
+            var domain = document.getElementById('dorkDomain').value.trim();
+            if (!domain) { alert('Enter a domain'); return; }
+            
+            var results = document.getElementById('dorkResults');
+            results.classList.remove('hidden');
+            results.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-blue-500"></i> Generating dorks...</div>';
+            
+            try {
+                var res = await fetch('/api/osint/quick', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target: domain })
+                });
+                var data = await res.json();
+                var dorks = data.osint.google_dorks;
+                
+                displayDorks(dorks);
+                
+                // Also update suppliers and tech if we got that data
+                if (data.osint.suppliers) {
+                    updateSuppliersTab(data.osint.suppliers);
+                }
+                if (data.osint.technology) {
+                    updateTechTab(data.osint.technology);
+                }
+            } catch (e) {
+                results.innerHTML = '<p class="text-red-400"><i class="fas fa-exclamation-triangle mr-1"></i>Error: ' + e.message + '</p>';
+            }
+        }
+        
+        function updateSuppliersTab(suppliers) {
+            var impersonation = suppliers.impersonation_targets || [];
+            var confirmed = suppliers.confirmed || [];
+            
+            var html1 = '';
+            impersonation.slice(0, 10).forEach(function(s) {
+                html1 += '<div class="bg-gray-900 p-2 rounded">' +
+                    '<div class="font-medium text-orange-400">' + s.name + '</div>' +
+                    '<div class="text-xs text-gray-500">' + s.pretext_suggestion + '</div>' +
+                    '</div>';
+            });
+            document.getElementById('suppliersList').innerHTML = html1 || '<p class="text-gray-500">No impersonation targets found</p>';
+            
+            var html2 = '';
+            confirmed.forEach(function(v) {
+                html2 += '<div class="bg-gray-900 p-2 rounded">' +
+                    '<div class="font-medium text-green-400">' + v.name + '</div>' +
+                    '<div class="text-xs text-gray-500">' + v.category + '</div>' +
+                    '</div>';
+            });
+            document.getElementById('detectedVendors').innerHTML = html2 || '<p class="text-gray-500">No vendors detected</p>';
+        }
+        
+        function updateTechTab(tech) {
+            var detected = tech.detected || {};
+            var html = '';
+            
+            var categories = {
+                'cloud_providers': { icon: 'fa-cloud', color: 'blue' },
+                'email_services': { icon: 'fa-envelope', color: 'purple' },
+                'crm_erp': { icon: 'fa-database', color: 'green' },
+                'security': { icon: 'fa-shield-alt', color: 'red' },
+                'collaboration': { icon: 'fa-users', color: 'yellow' },
+                'development': { icon: 'fa-code', color: 'cyan' }
+            };
+            
+            for (var cat in detected) {
+                var items = detected[cat];
+                if (items && items.length > 0) {
+                    var catInfo = categories[cat] || { icon: 'fa-cog', color: 'gray' };
+                    html += '<div class="bg-gray-900 p-3 rounded">' +
+                        '<div class="text-xs text-' + catInfo.color + '-400 mb-2"><i class="fas ' + catInfo.icon + ' mr-1"></i>' + cat.replace(/_/g, ' ').toUpperCase() + '</div>' +
+                        '<div class="space-y-1">';
+                    items.forEach(function(item) {
+                        html += '<div class="text-sm text-gray-300">' + item.replace(/_/g, ' ') + '</div>';
+                    });
+                    html += '</div></div>';
+                }
+            }
+            
+            document.getElementById('techStack').innerHTML = html || '<p class="text-gray-500 col-span-3">No technologies detected</p>';
+        }
+        
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function escapeJs(text) {
+            return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+        }
+        
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text);
+        }
+        
+        // API functions
+        async function checkHealth() {
+            try {
+                var res = await fetch('/api/health');
+                var data = await res.json();
+                document.getElementById('llmStatus').textContent = data.llm_configured ? (data.llm_provider.toUpperCase() + ' Ready') : 'LLM Not Configured';
+                document.getElementById('llmStatus').className = data.llm_configured ? 'text-green-400' : 'text-red-400';
+                
+                var indicators = [];
+                if (data.shodan_configured) indicators.push('<span class="text-green-400"><i class="fas fa-check mr-1"></i>Shodan</span>');
+                if (data.dehashed_configured) indicators.push('<span class="text-green-400"><i class="fas fa-check mr-1"></i>DeHashed</span>');
+                if (data.hunter_configured) indicators.push('<span class="text-green-400"><i class="fas fa-check mr-1"></i>Hunter</span>');
+                document.getElementById('statusIndicators').innerHTML = indicators.join(' ') || '<span class="text-yellow-400">No OSINT APIs</span>';
+            } catch (e) {
+                document.getElementById('llmStatus').textContent = 'Offline';
+                document.getElementById('llmStatus').className = 'text-red-400';
+            }
+        }
+        
+        async function loadProjects() {
+            try {
+                var res = await fetch('/api/projects');
+                var projects = await res.json();
+                var html = '';
+                projects.forEach(function(p) {
+                    var isActive = currentProject && currentProject.id === p.id;
+                    html += '<div onclick="selectProject(\'' + p.id + '\')" class="p-3 rounded-lg hover:bg-gray-800/50 cursor-pointer transition ' + (isActive ? 'bg-gray-800/50 border-l-2 border-red-500' : '') + '">' +
+                        '<div class="font-medium flex items-center gap-2"><i class="fas fa-crosshairs text-red-500 text-xs"></i>' + p.name + '</div>' +
+                        '<div class="text-xs text-gray-500 mt-1">' + (p.target || '') + '</div></div>';
+                });
+                document.getElementById('projectsList').innerHTML = html || '<div class="text-gray-500 text-sm p-3">No operations yet</div>';
+            } catch (e) {
+                console.error('Load projects error:', e);
+            }
+        }
+        
+        async function selectProject(id) {
+            try {
+                var res = await fetch('/api/projects/' + id);
+                currentProject = await res.json();
+                document.getElementById('projectTitle').innerHTML = '<i class="fas fa-crosshairs text-red-500 mr-2"></i>' + currentProject.name + ' <span class="text-gray-500 text-sm ml-2">' + currentProject.target + '</span>';
+                document.getElementById('refreshBtn').classList.remove('hidden');
+                
+                // Load OSINT data for the project
+                var osintRes = await fetch('/api/projects/' + id + '/osint');
+                var osintRecord = await osintRes.json();
+                if (osintRecord && osintRecord.data) {
+                    currentOsint = typeof osintRecord.data === 'string' ? JSON.parse(osintRecord.data) : osintRecord.data;
+                } else {
+                    currentOsint = {};
+                }
+                
+                // Show impact panel with real data
+                if (currentProject.impact_analysis && Object.keys(currentProject.impact_analysis).length > 0) {
+                    // Enhance impact_analysis with actual OSINT counts
+                    var impact = currentProject.impact_analysis;
+                    
+                    // Calculate real OSINT summary from loaded data
+                    var subdomains = 0;
+                    var services = 0;
+                    var leaks = 0;
+                    var emails = 0;
+                    
+                    if (currentOsint.crtsh && Array.isArray(currentOsint.crtsh)) {
+                        var uniqueSubs = new Set();
+                        currentOsint.crtsh.forEach(function(c) {
+                            if (c && c.name_value) {
+                                c.name_value.split('\n').forEach(function(s) {
+                                    if (s.trim()) uniqueSubs.add(s.trim().toLowerCase());
+                                });
+                            }
+                        });
+                        subdomains = uniqueSubs.size;
+                    }
+                    if (currentOsint.shodan && currentOsint.shodan.domain && currentOsint.shodan.domain.subdomains) {
+                        subdomains = Math.max(subdomains, currentOsint.shodan.domain.subdomains.length);
+                    }
+                    if (currentOsint.shodan && currentOsint.shodan.hosts && currentOsint.shodan.hosts.matches) {
+                        services = currentOsint.shodan.hosts.matches.length;
+                    }
+                    if (currentOsint.dehashed && currentOsint.dehashed.total) {
+                        leaks = currentOsint.dehashed.total;
+                    }
+                    if (currentOsint.hunter && currentOsint.hunter.data && currentOsint.hunter.data.emails) {
+                        emails = currentOsint.hunter.data.emails.length;
+                    }
+                    
+                    // Update osint_summary with real data
+                    impact.osint_summary = {
+                        subdomains_found: subdomains,
+                        open_services: services,
+                        leaked_credentials: leaks,
+                        emails_harvested: emails,
+                        sources_queried: currentOsint.metadata ? currentOsint.metadata.sources_queried : []
+                    };
+                    
+                    showImpactPanel(impact);
+                }
+                loadMessages();
+                loadProjects();
+            } catch (e) {
+                console.error('Select project error:', e);
+            }
+        }
+        
+        var currentOsint = {};
+        
+        async function loadMessages() {
+            if (!currentProject) return;
+            try {
+                var res = await fetch('/api/projects/' + currentProject.id + '/messages');
+                var messages = await res.json();
+                var container = document.getElementById('chatMessages');
+                
+                if (messages.length === 0) {
+                    container.innerHTML = '<div class="text-center py-10">' +
+                        '<i class="fas fa-crosshairs text-5xl mb-4 text-red-500"></i>' +
+                        '<p class="text-xl font-semibold">Target: <span class="text-red-400">' + currentProject.target + '</span></p>' +
+                        '<p class="text-sm text-gray-500 mt-2">Ready for operation. Try: "Give me attack paths with exact commands"</p></div>';
+                } else {
+                    container.innerHTML = messages.map(formatMessage).join('');
+                    processCodeBlocks();
+                    container.scrollTop = container.scrollHeight;
+                }
+            } catch (e) {
+                console.error('Load messages error:', e);
+            }
+        }
+        
+        function formatMessage(msg) {
+            var isUser = msg.role === 'user';
+            var content = msg.content;
+            try {
+                if (typeof marked !== 'undefined') content = marked.parse(msg.content);
+            } catch(e) {
+                content = msg.content.replace(/\n/g, '<br>');
+            }
+            return '<div class="flex ' + (isUser ? 'justify-end' : 'justify-start') + '">' +
+                '<div class="max-w-4xl w-full ' + (isUser ? 'bg-red-900/20 border-red-800/50' : 'bg-gray-800/50 border-gray-700') + ' border rounded-lg p-4">' +
+                '<div class="text-xs ' + (isUser ? 'text-red-400' : 'text-green-400') + ' mb-2 font-semibold">' +
+                '<i class="fas ' + (isUser ? 'fa-user-secret' : 'fa-robot') + ' mr-1"></i>' + (isUser ? 'Operator' : 'APT AI') + '</div>' +
+                '<div class="prose prose-sm max-w-none">' + content + '</div></div></div>';
+        }
+        
+        function processCodeBlocks() {
+            document.querySelectorAll('.prose pre').forEach(function(pre, index) {
+                if (pre.querySelector('.code-header')) return; // Already processed
+                
+                var code = pre.querySelector('code');
+                if (!code) return;
+                
+                var lang = 'code';
+                code.classList.forEach(function(cls) {
+                    if (cls.startsWith('language-')) lang = cls.replace('language-', '');
+                });
+                
+                var codeId = 'code-' + Date.now() + '-' + index;
+                code.id = codeId;
+                
+                var header = document.createElement('div');
+                header.className = 'code-header';
+                header.innerHTML = '<span class="code-lang">' + lang + '</span>' +
+                    '<button class="copy-btn" onclick="copyCode(\'' + codeId + '\', this)"><i class="fas fa-copy mr-1"></i>Copy</button>';
+                pre.insertBefore(header, code);
+                
+                if (typeof hljs !== 'undefined') {
+                    hljs.highlightElement(code);
+                }
+            });
+        }
+        
+        function copyCode(codeId, btn) {
+            var code = document.getElementById(codeId);
+            if (code) {
+                navigator.clipboard.writeText(code.textContent).then(function() {
+                    btn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(function() {
+                        btn.innerHTML = '<i class="fas fa-copy mr-1"></i>Copy';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                });
+            }
+        }
+        
+        async function sendMessage() {
+            if (!currentProject) {
+                alert('Create an operation first');
+                return;
+            }
+            
+            var textarea = document.getElementById('messageInput');
+            var message = textarea.value.trim();
+            var imageData = null;
+            var imageMime = null;
+            
+            // Handle file upload
+            if (selectedFile) {
+                var ext = selectedFile.name.split('.').pop().toLowerCase();
+                var isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext);
+                
+                if (isImage) {
+                    // Read image as base64 and send directly to chat
+                    var reader = new FileReader();
+                    var imagePromise = new Promise(function(resolve) {
+                        reader.onload = function(e) {
+                            var base64 = e.target.result.split(',')[1];
+                            var mimeMap = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif', 'webp': 'image/webp', 'bmp': 'image/bmp'};
+                            resolve({ base64: base64, mime: mimeMap[ext] || 'image/png' });
+                        };
+                        reader.readAsDataURL(selectedFile);
+                    });
+                    var imgResult = await imagePromise;
+                    imageData = imgResult.base64;
+                    imageMime = imgResult.mime;
+                    if (!message) message = "Please analyze this image for security-relevant information.";
+                } else {
+                    // Non-image file - upload and get analysis prompt
+                    var formData = new FormData();
+                    formData.append('file', selectedFile);
+                    
+                    try {
+                        var uploadRes = await fetch('/api/projects/' + currentProject.id + '/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        var uploadData = await uploadRes.json();
+                        if (uploadData.analysis_prompt) {
+                            message = (message ? message + '\n\n' : '') + uploadData.analysis_prompt;
+                        }
+                    } catch (e) {
+                        console.error('Upload error:', e);
+                    }
+                }
+                clearFile();
+            }
+            
+            if (!message && !imageData) return;
+            
+            textarea.value = '';
+            textarea.style.height = 'auto';
+            
+            var container = document.getElementById('chatMessages');
+            
+            // Track if user is near bottom for auto-scroll
+            var isNearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
+            
+            // Show user message with image indicator if applicable
+            var displayMessage = imageData ? '[📷 Image attached]\n' + message : message;
+            container.innerHTML += formatMessage({ role: 'user', content: displayMessage });
+            container.innerHTML += '<div id="loading" class="flex justify-start"><div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4"><i class="fas fa-spinner fa-spin text-green-400 mr-2"></i><span class="text-green-400">Analyzing' + (imageData ? ' image and ' : ' ') + 'generating response...</span></div></div>';
+            if (isNearBottom) container.scrollTop = container.scrollHeight;
+            
+            try {
+                var requestBody = { message: message };
+                if (imageData) {
+                    requestBody.image = imageData;
+                    requestBody.image_mime = imageMime;
+                }
+                
+                var res = await fetch('/api/projects/' + currentProject.id + '/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                var loadingEl = document.getElementById('loading');
+                if (loadingEl) loadingEl.remove();
+                
+                if (res.headers.get('content-type') && res.headers.get('content-type').includes('event-stream')) {
+                    var reader = res.body.getReader();
+                    var decoder = new TextDecoder();
+                    var fullContent = '';
+                    var streamId = 'stream-' + Date.now();
+                    var responseDiv = document.createElement('div');
+                    responseDiv.className = 'flex justify-start';
+                    responseDiv.innerHTML = '<div class="max-w-4xl w-full bg-gray-800/50 border border-gray-700 rounded-lg p-4">' +
+                        '<div class="text-xs text-green-400 mb-2 font-semibold"><i class="fas fa-robot mr-1"></i>APT AI</div>' +
+                        '<div class="prose prose-sm max-w-none" id="' + streamId + '"></div></div>';
+                    container.appendChild(responseDiv);
+                    
+                    // Track user scroll position during streaming
+                    var userScrolledUp = false;
+                    var scrollHandler = function() {
+                        var nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
+                        userScrolledUp = !nearBottom;
+                    };
+                    container.addEventListener('scroll', scrollHandler);
+                    
+                    while (true) {
+                        var result = await reader.read();
+                        if (result.done) break;
+                        var chunk = decoder.decode(result.value);
+                        var lines = chunk.split('\n');
+                        for (var i = 0; i < lines.length; i++) {
+                            if (lines[i].startsWith('data: ')) {
+                                try {
+                                    var data = JSON.parse(lines[i].slice(6));
+                                    if (data.content) {
+                                        fullContent += data.content;
+                                        var el = document.getElementById(streamId);
+                                        if (el) {
+                                            try { el.innerHTML = marked.parse(fullContent); }
+                                            catch(e) { el.innerHTML = fullContent.replace(/\n/g, '<br>'); }
+                                        }
+                                        // Only auto-scroll if user hasn't scrolled up
+                                        if (!userScrolledUp) {
+                                            container.scrollTop = container.scrollHeight;
+                                        }
+                                    }
+                                    if (data.error) {
+                                        container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>' + data.error + '</div>';
+                                    }
+                                } catch (e) {}
+                            }
+                        }
+                    }
+                    // Remove scroll listener after streaming done
+                    container.removeEventListener('scroll', scrollHandler);
+                    processCodeBlocks();
+                } else {
+                    var data = await res.json();
+                    if (data.response) {
+                        container.innerHTML += formatMessage({ role: 'assistant', content: data.response });
+                        processCodeBlocks();
+                    } else if (data.error) {
+                        container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>' + data.error + '</div>';
+                    }
+                }
+                // Scroll to bottom only if user was already near bottom
+                if (!userScrolledUp) container.scrollTop = container.scrollHeight;
+            } catch (e) {
+                var loadingEl = document.getElementById('loading');
+                if (loadingEl) loadingEl.remove();
+                container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>Connection Error: ' + e.message + '</div>';
+            }
+        }
+        
+        async function createProject() {
+            var target = document.getElementById('targetInput').value.trim();
+            if (!target) { alert('Enter a target'); return; }
+            
+            var name = document.getElementById('projectNameInput').value.trim() || ('Operation ' + target.split('.')[0].toUpperCase());
+            var btn = document.getElementById('createBtn');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Running OSINT...';
+            btn.disabled = true;
+            
+            try {
+                var res = await fetch('/api/projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target: target, name: name, type: 'apt' })
+                });
+                var data = await res.json();
+                hideNewProject();
+                document.getElementById('targetInput').value = '';
+                document.getElementById('projectNameInput').value = '';
+                await loadProjects();
+                await selectProject(data.id);
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+            btn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Launch';
+            btn.disabled = false;
+        }
+        
+        async function refreshOSINT() {
+            if (!currentProject) return;
+            var btn = document.getElementById('refreshBtn');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Scanning...';
+            btn.disabled = true;
+            try {
+                var res = await fetch('/api/projects/' + currentProject.id + '/osint/refresh', { method: 'POST' });
+                var data = await res.json();
+                if (data.impact_analysis) showImpactPanel(data.impact_analysis);
+                btn.innerHTML = '<i class="fas fa-check mr-1"></i>Done';
+            } catch (e) {
+                btn.innerHTML = '<i class="fas fa-times mr-1"></i>Failed';
+            }
+            setTimeout(function() { 
+                btn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i>Refresh OSINT'; 
+                btn.disabled = false;
+            }, 2000);
+        }
+        
+        function showImpactPanel(impact) {
+            document.getElementById('impactPanel').classList.remove('hidden');
+            var p = impact.probabilities || {};
+            var o = impact.osint_summary || {};
+            var path = impact.recommended_attack_path || {};
+            var live = impact.live_targets || [];
+            
+            var html = '';
+            
+            // Attack Surface Score
+            var scoreColor = impact.attack_surface_score >= 7 ? 'red' : impact.attack_surface_score >= 5 ? 'yellow' : 'green';
+            html += '<div class="bg-gray-800/50 rounded-lg p-4">' +
+                '<div class="text-xs text-gray-500 mb-1">ATTACK SURFACE</div>' +
+                '<div class="flex items-baseline gap-2">' +
+                '<span class="text-4xl font-bold text-' + scoreColor + '-500">' + (impact.attack_surface_score || 0) + '</span>' +
+                '<span class="text-gray-500">/10</span>' +
+                '</div>' +
+                '<div class="text-xs text-gray-500 mt-1">' + (impact.industry || 'Unknown') + '</div>' +
+                '</div>';
+            
+            // Recommended Attack Path
+            if (path.path) {
+                html += '<div class="bg-orange-900/20 border border-orange-800/50 rounded-lg p-3">' +
+                    '<div class="text-xs text-orange-400 mb-1">RECOMMENDED ATTACK PATH</div>' +
+                    '<div class="text-sm text-orange-300">' + path.path + '</div>' +
+                    '<div class="text-xs text-green-400 mt-1">' + (path.success_rate || 0) + '% success rate</div>' +
+                    '</div>';
+            }
+            
+            // Success Probabilities
+            html += '<div class="bg-gray-800/50 rounded-lg p-4">' +
+                '<div class="text-xs text-gray-500 mb-3">SUCCESS PROBABILITY</div>' +
+                '<div class="space-y-3">';
+            
+            var probs = [
+                { name: 'Initial Access', value: p.initial_access || 0, color: 'green' },
+                { name: 'Domain Admin', value: p.domain_admin || 0, color: 'yellow' },
+                { name: 'Data Exfil', value: p.data_exfiltration || 0, color: 'purple' },
+                { name: 'Ransomware', value: p.ransomware_deployment || 0, color: 'red' }
+            ];
+            
+            probs.forEach(function(prob) {
+                html += '<div>' +
+                    '<div class="flex justify-between text-sm mb-1"><span>' + prob.name + '</span><span class="font-mono text-' + prob.color + '-400">' + prob.value + '%</span></div>' +
+                    '<div class="h-2 bg-gray-700 rounded-full overflow-hidden"><div class="h-2 bg-' + prob.color + '-500 rounded-full transition-all" style="width:' + prob.value + '%"></div></div>' +
+                    '</div>';
+            });
+            html += '</div></div>';
+            
+            // Live Targets
+            if (live.length > 0) {
+                html += '<div class="bg-green-900/20 border border-green-800/50 rounded-lg p-3">' +
+                    '<div class="text-xs text-green-400 mb-2 flex items-center justify-between"><span>LIVE TARGETS</span><span class="text-green-300"><i class="fas fa-check-circle mr-1"></i>VALIDATED</span></div>' +
+                    '<div class="space-y-1 text-sm max-h-32 overflow-y-auto">';
+                live.forEach(function(t) {
+                    var url = typeof t === 'string' ? t : (t.url || t);
+                    var status = typeof t === 'object' ? (t.status || '200') : '200';
+                    html += '<div class="flex items-center gap-2"><span class="text-green-400">•</span><span class="font-mono text-xs text-gray-300 truncate">' + url + '</span><span class="text-xs text-gray-500">[' + status + ']</span></div>';
+                });
+                html += '</div></div>';
+            }
+            
+            // OSINT Findings - More detailed
+            html += '<div class="bg-gray-800/50 rounded-lg p-4">' +
+                '<div class="text-xs text-gray-500 mb-2">OSINT FINDINGS</div>' +
+                '<div class="grid grid-cols-2 gap-2">';
+            
+            var findings = [
+                { label: 'Subdomains', value: o.subdomains_found || 0, color: 'blue', icon: 'fa-sitemap' },
+                { label: 'Services', value: o.open_services || 0, color: 'purple', icon: 'fa-server' },
+                { label: 'Leaks', value: o.leaked_credentials || 0, color: 'red', icon: 'fa-key' },
+                { label: 'Emails', value: o.emails_harvested || 0, color: 'green', icon: 'fa-envelope' }
+            ];
+            
+            findings.forEach(function(f) {
+                html += '<div class="bg-gray-900 p-2 rounded text-center">' +
+                    '<div class="text-lg font-bold text-' + f.color + '-400"><i class="fas ' + f.icon + ' text-xs mr-1"></i>' + f.value + '</div>' +
+                    '<div class="text-xs text-gray-500">' + f.label + '</div></div>';
+            });
+            html += '</div>';
+            
+            // Sources queried
+            var sources = o.sources_queried || [];
+            if (sources.length > 0) {
+                html += '<div class="mt-2 text-xs text-gray-500">Sources: ' + sources.join(', ') + '</div>';
+            }
+            html += '</div>';
+            
+            // Breach Value
+            var bv = impact.breach_value || {};
+            if (bv.ransomware_demand_min) {
+                html += '<div class="bg-red-900/20 border border-red-800/50 rounded-lg p-3">' +
+                    '<div class="text-xs text-red-400 mb-2">ESTIMATED BREACH VALUE</div>' +
+                    '<div class="text-sm text-gray-300">Ransomware: <span class="text-red-400">€' + bv.ransomware_demand_min + 'M - €' + bv.ransomware_demand_max + 'M</span></div>' +
+                    '<div class="text-sm text-gray-300">Business Impact: <span class="text-yellow-400">€' + bv.business_impact_min + 'M - €' + bv.business_impact_max + 'M</span></div>' +
+                    '</div>';
+            }
+            
+            document.getElementById('impactContent').innerHTML = html;
+        }
+        
+        // Phishing functions
+        async function generateTemplate() {
+            try {
+                var res = await fetch('/api/phishing/template', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: document.getElementById('templateType').value,
+                        attacker_domain: document.getElementById('attackerDomain').value || 'secure-portal.com',
+                        target_name: document.getElementById('targetName').value || 'John Smith',
+                        target_company: document.getElementById('targetCompany').value || 'Acme Corporation',
+                        target_email: document.getElementById('targetEmail').value || 'john@acme.com',
+                        sender_name: document.getElementById('senderName').value
+                    })
+                });
+                currentTemplate = await res.json();
+                document.getElementById('emailPreview').innerHTML = currentTemplate.html || '';
+                document.getElementById('templatePreview').classList.remove('hidden');
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+        
+        function copyHtml() {
+            if (currentTemplate && currentTemplate.html) {
+                navigator.clipboard.writeText(currentTemplate.html);
+                alert('HTML copied!');
+            }
+        }
+        
+        function copySubject() {
+            if (currentTemplate && currentTemplate.subject) {
+                navigator.clipboard.writeText(currentTemplate.subject);
+                alert('Subject copied: ' + currentTemplate.subject);
+            }
+        }
+        
+        function downloadEml() {
+            if (!currentTemplate) return;
+            var eml = 'From: ' + currentTemplate.from_name + ' <' + currentTemplate.from_email + '>\r\n' +
+                'To: recipient@example.com\r\n' +
+                'Subject: ' + currentTemplate.subject + '\r\n' +
+                'MIME-Version: 1.0\r\n' +
+                'Content-Type: text/html; charset=UTF-8\r\n\r\n' +
+                (currentTemplate.html || '');
+            
+            var blob = new Blob([eml], { type: 'message/rfc822' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'phishing_email.eml';
+            a.click();
+        }
+    </script>
+</body>
+</html>

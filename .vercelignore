@@ -1,0 +1,20 @@
+# Vercel ignore file
+*.db
+*.pyc
+__pycache__/
+.env
+.git/
+.gitignore
+*.zip
+*.log
+attached_assets/
+xpose_ai_v6.zip
+node_modules/
+.replit
+replit.md
+uv.lock
+pyproject.toml
+package.json
+start.bat
+start.sh
+script/
