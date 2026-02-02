@@ -174,7 +174,9 @@ def init_db():
 
 @app.before_request
 def ensure_db_initialized():
-    init_db()
+    global _db_initialized
+    if not _db_initialized:
+        init_db()
 
 # OSINT Functions
 def gather_comprehensive_osint(target):
