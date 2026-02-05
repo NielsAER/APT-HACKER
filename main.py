@@ -1489,20 +1489,36 @@ def call_llm_sync(messages, max_tokens=16000):
     else:
         url, headers, model = "https://api.openai.com/v1/chat/completions", {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}, LLM_MODEL or "gpt-4"
     
-    try:
-        response = requests.post(url, headers=headers, json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.8}, timeout=180)
-        if response.status_code == 401:
-            raise Exception(f"401 Unauthorized: Invalid or expired {LLM_PROVIDER.upper()} API key")
-        elif response.status_code == 402:
-            raise Exception(f"402 Payment Required: {LLM_PROVIDER.upper()} account has no credits")
-        response.raise_for_status()
-        return response.json()['choices'][0]['message']['content']
-    except requests.exceptions.HTTPError as e:
-        raise Exception(f"{LLM_PROVIDER.upper()} API Error: {str(e)}")
-    except requests.exceptions.ConnectionError:
-        raise Exception(f"Connection failed to {LLM_PROVIDER.upper()} API")
-    except requests.exceptions.Timeout:
-        raise Exception(f"Request timeout to {LLM_PROVIDER.upper()} API")
+    for attempt in range(3):
+        try:
+            if attempt > 0:
+                system_msg = messages[0] if messages and messages[0]["role"] == "system" else None
+                user_msgs = [m for m in messages if m["role"] != "system"]
+                keep = max(2, len(user_msgs) - (attempt * 8))
+                messages = ([system_msg] if system_msg else []) + user_msgs[-keep:]
+                if attempt >= 2 and system_msg:
+                    system_msg["content"] = system_msg["content"][:15000] + "\n...[truncated]..."
+                print(f"[*] Retry {attempt}: reduced to {len(messages)} messages")
+            
+            response = requests.post(url, headers=headers, json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.8}, timeout=180)
+            if response.status_code == 401:
+                raise Exception(f"401 Unauthorized: Invalid or expired {LLM_PROVIDER.upper()} API key")
+            elif response.status_code == 402:
+                raise Exception(f"402 Payment Required: {LLM_PROVIDER.upper()} account has no credits")
+            elif response.status_code == 400 and attempt < 2:
+                print(f"[!] 400 error (likely token overflow), retrying with less context...")
+                continue
+            response.raise_for_status()
+            return response.json()['choices'][0]['message']['content']
+        except requests.exceptions.HTTPError as e:
+            if "400" in str(e) and attempt < 2:
+                continue
+            raise Exception(f"{LLM_PROVIDER.upper()} API Error: {str(e)}")
+        except requests.exceptions.ConnectionError:
+            raise Exception(f"Connection failed to {LLM_PROVIDER.upper()} API")
+        except requests.exceptions.Timeout:
+            raise Exception(f"Request timeout to {LLM_PROVIDER.upper()} API")
+    raise Exception(f"Failed after 3 retries - context too large for {LLM_PROVIDER.upper()}")
 
 # API Routes
 @app.route("/")
@@ -2252,8 +2268,23 @@ def chat(project_id):
             )
         
         messages = [{"role": "system", "content": system_prompt}]
-        for h in history[-30:]: 
-            messages.append({"role": h["role"], "content": h["content"]})
+        
+        # Smart history truncation: limit total characters to ~60k (~15k tokens)
+        MAX_HISTORY_CHARS = 60000
+        recent_history = history[-30:]
+        total_chars = 0
+        trimmed_history = []
+        for h in reversed(recent_history):
+            content = h["content"] or ""
+            if len(content) > 8000:
+                content = content[:8000] + "\n...[truncated]..."
+            total_chars += len(content)
+            if total_chars > MAX_HISTORY_CHARS:
+                break
+            trimmed_history.insert(0, {"role": h["role"], "content": content})
+        
+        for h in trimmed_history:
+            messages.append(h)
         
         # Handle image in message
         if image_data:
