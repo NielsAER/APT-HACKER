@@ -309,6 +309,8 @@
         var currentProject = null;
         var currentTemplate = null;
         var selectedFile = null;
+        var currentAbortController = null;
+        var isStreaming = false;
         
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -746,6 +748,19 @@
                 deleteProject(id);
             }
         }
+        // Stop generating and reset state
+        function stopGeneration() {
+            if (currentAbortController) {
+                currentAbortController.abort();
+                currentAbortController = null;
+            }
+
+            isStreaming = false;
+
+            var loadingEl = document.getElementById('loading');
+            if (loadingEl) loadingEl.remove();
+            resetGeneratingState();
+        }
 
 
         // Delete project
@@ -918,8 +933,48 @@
                 });
             }
         }
-        
+
+        function setGeneratingState() {
+    isStreaming = true;
+
+    var btn = document.getElementById('sendButton');
+    var textarea = document.getElementById('messageInput');
+
+    if (btn) {
+        btn.innerHTML = '<i class="fas fa-stop mr-2"></i>Stop';
+        btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+        btn.classList.add('bg-red-600', 'hover:bg-red-700');
+        btn.onclick = stopGeneration;
+    }
+
+    if (textarea) {
+        textarea.disabled = true;
+        textarea.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+}
+
+        function resetGeneratingState() {
+            isStreaming = false;
+            currentAbortController = null;
+
+            var btn = document.getElementById('sendButton');
+            var textarea = document.getElementById('messageInput');
+
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Send';
+                btn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                btn.classList.add('bg-green-600', 'hover:bg-green-700');
+                btn.onclick = sendMessage;
+            }
+
+            if (textarea) {
+                textarea.disabled = false;
+                textarea.classList.remove('opacity-50', 'cursor-not-allowed');
+                textarea.focus();
+            }
+        }
         async function sendMessage() {
+            if (isStreaming) return;
             if (!currentProject) {
                 alert('Create an operation first');
                 return;
@@ -984,7 +1039,16 @@
             // Show user message with image indicator if applicable
             var displayMessage = imageData ? '[📷 Image attached]\n' + message : message;
             container.innerHTML += formatMessage({ role: 'user', content: displayMessage });
-            container.innerHTML += '<div id="loading" class="flex justify-start"><div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4"><i class="fas fa-spinner fa-spin text-green-400 mr-2"></i><span class="text-green-400">Analyzing' + (imageData ? ' image and ' : ' ') + 'generating response...</span></div></div>';
+            container.innerHTML += 
+            '<div id="loading" class="flex justify-start">' +
+                '<div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex items-center gap-3">' +
+                    '<i class="fas fa-spinner fa-spin text-green-400"></i>' +
+                    '<span class="text-green-400">Analyzing' + (imageData ? ' image and ' : ' ') + 'generating response...</span>' +
+                    '<button onclick="stopGeneration()" class="ml-4 text-red-400 hover:text-red-300 text-sm">' +
+                        '<i class="fas fa-stop mr-1"></i>Stop' +
+                    '</button>' +
+                '</div>' +
+            '</div>';
             if (isNearBottom) container.scrollTop = container.scrollHeight;
             
             try {
@@ -994,10 +1058,14 @@
                     requestBody.image_mime = imageMime;
                 }
                 
+                currentAbortController = new AbortController();
+                setGeneratingState();
+
                 var res = await fetch('/api/projects/' + currentProject.id + '/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestBody)
+                    body: JSON.stringify(requestBody),
+                    signal: currentAbortController.signal
                 });
                 
                 var loadingEl = document.getElementById('loading');
@@ -1024,8 +1092,14 @@
                     container.addEventListener('scroll', scrollHandler);
                     
                     while (true) {
-                        var result = await reader.read();
-                        if (result.done) break;
+                        var result;
+                    try {
+                        result = await reader.read();
+                    } catch (err) {
+                        if (err.name === 'AbortError') break;
+                        throw err;
+                    }
+                    if (result.done) break;
                         var chunk = decoder.decode(result.value);
                         var lines = chunk.split('\n');
                         for (var i = 0; i < lines.length; i++) {
@@ -1047,7 +1121,17 @@
                                     if (data.error) {
                                         container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>' + data.error + '</div>';
                                     }
-                                } catch (e) {}
+                                } catch (e) {
+                                    var loadingEl = document.getElementById('loading');
+                                    if (loadingEl) loadingEl.remove();
+
+                                    if (e.name === 'AbortError') {
+                                        container.innerHTML += 
+                                            '<div class="p-4 bg-yellow-900/30 border border-yellow-800 rounded-lg text-yellow-400">' +
+                                            '<i class="fas fa-stop mr-2"></i>Generation stopped.' +
+                                            '</div>';
+                                    } resetGeneratingState();
+                                }
                             }
                         }
                     }
