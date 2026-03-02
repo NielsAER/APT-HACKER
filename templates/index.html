@@ -311,6 +311,8 @@
         var selectedFile = null;
         var currentAbortController = null;
         var isStreaming = false;
+        var progressInterval = null;
+        var currentProgress = 0;
         
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -935,23 +937,24 @@
         }
 
         function setGeneratingState() {
-    isStreaming = true;
+        isStreaming = true;
 
-    var btn = document.getElementById('sendButton');
-    var textarea = document.getElementById('messageInput');
+        var btn = document.getElementById('sendButton');
+        var textarea = document.getElementById('messageInput');
 
-    if (btn) {
-        btn.innerHTML = '<i class="fas fa-stop mr-2"></i>Stop';
-        btn.classList.remove('bg-green-600', 'hover:bg-green-700');
-        btn.classList.add('bg-red-600', 'hover:bg-red-700');
-        btn.onclick = stopGeneration;
-    }
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-stop mr-2"></i>Stop';
+                btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                btn.classList.add('bg-red-600', 'hover:bg-red-700');
+                btn.onclick = stopGeneration;
+            }
 
-    if (textarea) {
-        textarea.disabled = true;
-        textarea.classList.add('opacity-50', 'cursor-not-allowed');
-    }
-}
+            if (textarea) {
+                textarea.disabled = true;
+                textarea.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+            startProgressSimulation();
+        }
 
         function resetGeneratingState() {
             isStreaming = false;
@@ -972,6 +975,36 @@
                 textarea.classList.remove('opacity-50', 'cursor-not-allowed');
                 textarea.focus();
             }
+            stopProgressSimulation();
+        }
+        function startProgressSimulation() {
+            currentProgress = 0;
+            updateProgressUI(0);
+
+            progressInterval = setInterval(function() {
+                if (currentProgress < 90) {
+                    currentProgress += Math.random() * 5;
+                    updateProgressUI(Math.floor(currentProgress));
+                }
+            }, 400);
+        }
+
+        function stopProgressSimulation() {
+            clearInterval(progressInterval);
+            updateProgressUI(100);
+
+            setTimeout(function() {
+                var loadingEl = document.getElementById('loading');
+                if (loadingEl) loadingEl.remove();
+            }, 600);
+        }
+
+        function updateProgressUI(value) {
+            var bar = document.getElementById('progressBar');
+            var percent = document.getElementById('progressPercent');
+
+            if (bar) bar.style.width = value + '%';
+            if (percent) percent.innerText = value;
         }
         async function sendMessage() {
             if (isStreaming) return;
@@ -1041,12 +1074,17 @@
             container.innerHTML += formatMessage({ role: 'user', content: displayMessage });
             container.innerHTML += 
             '<div id="loading" class="flex justify-start">' +
-                '<div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex items-center gap-3">' +
-                    '<i class="fas fa-spinner fa-spin text-green-400"></i>' +
-                    '<span class="text-green-400">Analyzing' + (imageData ? ' image and ' : ' ') + 'generating response...</span>' +
-                    '<button onclick="stopGeneration()" class="ml-4 text-red-400 hover:text-red-300 text-sm">' +
-                        '<i class="fas fa-stop mr-1"></i>Stop' +
-                    '</button>' +
+                '<div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 w-full max-w-md">' +
+                    '<div class="flex items-center gap-3">' +
+                        '<i class="fas fa-skull text-red-500 text-xl animate-pulse"></i>' +
+                        '<div class="flex-1">' +
+                            '<div class="text-sm text-red-400 font-semibold">Executing Operation...</div>' +
+                            '<div class="w-full bg-gray-700 rounded-full h-2 mt-2 overflow-hidden">' +
+                                '<div id="progressBar" class="bg-red-500 h-2 transition-all duration-300" style="width:0%"></div>' +
+                            '</div>' +
+                            '<div class="text-xs text-gray-400 mt-1"><span id="progressPercent">0</span>%</div>' +
+                        '</div>' +
+                    '</div>' +
                 '</div>' +
             '</div>';
             if (isNearBottom) container.scrollTop = container.scrollHeight;
@@ -1108,6 +1146,11 @@
                                     var data = JSON.parse(lines[i].slice(6));
                                     if (data.content) {
                                         fullContent += data.content;
+                                        // Boost progress when tokens arrive
+                                        if (currentProgress < 95) {
+                                            currentProgress += 2;
+                                            updateProgressUI(Math.min(95, currentProgress));
+                                        }
                                         var el = document.getElementById(streamId);
                                         if (el) {
                                             try { el.innerHTML = marked.parse(fullContent); }
