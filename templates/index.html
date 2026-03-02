@@ -703,18 +703,73 @@
                 var res = await fetch('/api/projects');
                 var projects = await res.json();
                 var html = '';
+
                 projects.forEach(function(p) {
                     var isActive = currentProject && currentProject.id === p.id;
-                    html += '<div onclick="selectProject(\'' + p.id + '\')" class="p-3 rounded-lg hover:bg-gray-800/50 cursor-pointer transition ' + (isActive ? 'bg-gray-800/50 border-l-2 border-red-500' : '') + '">' +
-                        '<div class="font-medium flex items-center gap-2"><i class="fas fa-crosshairs text-red-500 text-xs"></i>' + p.name + '</div>' +
-                        '<div class="text-xs text-gray-500 mt-1">' + (p.target || '') + '</div></div>';
+
+                    html += '<div onclick="selectProject(\'' + p.id + '\')" ' +
+                        'class="group p-3 rounded-lg hover:bg-gray-800/50 cursor-pointer transition flex justify-between items-start ' +
+                        (isActive ? 'bg-gray-800/50 border-l-2 border-red-500' : '') + '">' +
+
+                        // Left content
+                        '<div>' +
+                            '<div class="font-medium flex items-center gap-2">' +
+                                '<i class="fas fa-crosshairs text-red-500 text-xs"></i>' +
+                                p.name +
+                            '</div>' +
+                            '<div class="text-xs text-gray-500 mt-1">' +
+                                (p.target || '') +
+                            '</div>' +
+                        '</div>' +
+
+                        // Delete button
+                        '<button onclick="event.stopPropagation(); confirmDeleteProject(\'' + p.id + '\', \'' + p.name.replace(/'/g, "\\'") + '\')" ' +
+                            'class="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-500 transition text-sm">' +
+                            '<i class="fas fa-times"></i>' +
+                        '</button>' +
+
+                    '</div>';
                 });
-                document.getElementById('projectsList').innerHTML = html || '<div class="text-gray-500 text-sm p-3">No operations yet</div>';
+
+                document.getElementById('projectsList').innerHTML =
+                    html || '<div class="text-gray-500 text-sm p-3">No operations yet</div>';
+
             } catch (e) {
                 console.error('Load projects error:', e);
             }
         }
-        
+
+
+        // Confirmation wrapper
+        function confirmDeleteProject(id, name) {
+            if (confirm('Are you sure you want to delete "' + name + '"?\nThis action cannot be undone.')) {
+                deleteProject(id);
+            }
+        }
+
+
+        // Delete project
+        async function deleteProject(id) {
+            try {
+                var res = await fetch('/api/projects/' + id, { method: 'DELETE' });
+
+                if (!res.ok) {
+                    throw new Error('Delete failed');
+                }
+
+                // If deleted project was active, reset it
+                if (currentProject && currentProject.id === id) {
+                    currentProject = null;
+                }
+
+                loadProjects();
+
+            } catch (e) {
+                console.error('Delete project error:', e);
+                alert('Failed to delete project.');
+            }
+        }
+        // Select project
         async function selectProject(id) {
             try {
                 var res = await fetch('/api/projects/' + id);
