@@ -1188,9 +1188,20 @@
                 // Scroll to bottom only if user was already near bottom
                 if (!userScrolledUp) container.scrollTop = container.scrollHeight;
             } catch (e) {
-                var loadingEl = document.getElementById('loading');
-                if (loadingEl) loadingEl.remove();
-                container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>Connection Error: ' + e.message + '</div>';
+                 if (e.name === 'AbortError') {
+                    container.innerHTML += 
+                        '<div class="p-4 bg-yellow-900/30 border border-yellow-800 rounded-lg text-yellow-400">' +
+                        '<i class="fas fa-stop mr-2"></i>Generation stopped.' +
+                        '</div>';
+                } else {
+                    container.innerHTML += 
+                        '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400">' +
+                        '<i class="fas fa-exclamation-triangle mr-2"></i>Connection Error: ' + e.message +
+                        '</div>';
+                }
+            }
+            finally {
+                resetGeneratingState();
             }
         }
         
