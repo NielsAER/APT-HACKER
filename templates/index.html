@@ -1008,7 +1008,10 @@
         }
         async function sendMessage() {
             if (isStreaming) return;
-            isStreaming = true;
+            if (!currentProject) {
+                alert('Create an operation first');
+                return;
+            }
             
             var textarea = document.getElementById('messageInput');
             var message = textarea.value.trim();
@@ -1114,22 +1117,22 @@
                 if (res.headers.get('content-type') && res.headers.get('content-type').includes('event-stream')) {
                     var reader = res.body.getReader();
                     var decoder = new TextDecoder();
-                    // var fullContent = '';
-                    // var streamId = 'stream-' + Date.now();
-                    // var responseDiv = document.createElement('div');
-                    // responseDiv.className = 'flex justify-start';
-                    // responseDiv.innerHTML = '<div class="max-w-4xl w-full bg-gray-800/50 border border-gray-700 rounded-lg p-4">' +
-                    //     '<div class="text-xs text-green-400 mb-2 font-semibold"><i class="fas fa-robot mr-1"></i>APT AI</div>' +
-                    //     '<div class="prose prose-sm max-w-none" id="' + streamId + '"></div></div>';
-                    // container.appendChild(responseDiv);
+                    var fullContent = '';
+                    var streamId = 'stream-' + Date.now();
+                    var responseDiv = document.createElement('div');
+                    responseDiv.className = 'flex justify-start';
+                    responseDiv.innerHTML = '<div class="max-w-4xl w-full bg-gray-800/50 border border-gray-700 rounded-lg p-4">' +
+                        '<div class="text-xs text-green-400 mb-2 font-semibold"><i class="fas fa-robot mr-1"></i>APT AI</div>' +
+                        '<div class="prose prose-sm max-w-none" id="' + streamId + '"></div></div>';
+                    container.appendChild(responseDiv);
                     
-                    // // Track user scroll position during streaming
-                    // var userScrolledUp = false;
-                    // var scrollHandler = function() {
-                    //     var nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
-                    //     userScrolledUp = !nearBottom;
-                    // };
-                    // container.addEventListener('scroll', scrollHandler);
+                    // Track user scroll position during streaming
+                    var userScrolledUp = false;
+                    var scrollHandler = function() {
+                        var nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
+                        userScrolledUp = !nearBottom;
+                    };
+                    container.addEventListener('scroll', scrollHandler);
                     
                     while (true) {
                         var result;
@@ -1142,41 +1145,42 @@
                     if (result.done) break;
                         var chunk = decoder.decode(result.value);
                         var lines = chunk.split('\n');
-                        for (let line of lines) {
-                             if (!line.startsWith('data: ')) continue;
+                        for (var i = 0; i < lines.length; i++) {
+                            if (lines[i].startsWith('data: ')) {
                                 try {
-                                    const data = JSON.parse(line.slice(6));
-
-                                    // ✅ REAL PROGRESS
-                                    if (data.type === "progress") {
-                                        updateProgressUI(data.percent, data.stage);
+                                    var data = JSON.parse(lines[i].slice(6));
+                                    if (data.content) {
+                                        fullContent += data.content;
+                                        // Boost progress when tokens arrive
+                                        if (currentProgress < 95) {
+                                            currentProgress += 2;
+                                            updateProgressUI(Math.min(95, currentProgress));
+                                        }
+                                        var el = document.getElementById(streamId);
+                                        if (el) {
+                                            try { el.innerHTML = marked.parse(fullContent); }
+                                            catch(e) { el.innerHTML = fullContent.replace(/\n/g, '<br>'); }
+                                        }
+                                        // Only auto-scroll if user hasn't scrolled up
+                                        if (!userScrolledUp) {
+                                            container.scrollTop = container.scrollHeight;
+                                        }
                                     }
-
-                                    // ✅ STREAM TOKENS LIVE
-                                    if (data.type === "token") {
-                                        appendToken(data.content);
-                                    }
-
-                                    if (data.type === "complete") {
-                                        updateProgressUI(100, "Complete");
-                                    }
-
                                     if (data.error) {
-                                        showError(data.error);
+                                        container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>' + data.error + '</div>';
                                     }
-
                                 } catch (e) {
-                                    // var loadingEl = document.getElementById('loading');
-                                    // if (loadingEl) loadingEl.remove();
+                                    var loadingEl = document.getElementById('loading');
+                                    if (loadingEl) loadingEl.remove();
 
-                                    // if (e.name === 'AbortError') {
-                                    //     container.innerHTML += 
-                                    //         '<div class="p-4 bg-yellow-900/30 border border-yellow-800 rounded-lg text-yellow-400">' +
-                                    //         '<i class="fas fa-stop mr-2"></i>Generation stopped.' +
-                                    //         '</div>';
-                                    // } resetGeneratingState();
+                                    if (e.name === 'AbortError') {
+                                        container.innerHTML += 
+                                            '<div class="p-4 bg-yellow-900/30 border border-yellow-800 rounded-lg text-yellow-400">' +
+                                            '<i class="fas fa-stop mr-2"></i>Generation stopped.' +
+                                            '</div>';
+                                    } resetGeneratingState();
                                 }
-                            
+                            }
                         }
                     }
                     // Remove scroll listener after streaming done
@@ -1198,21 +1202,6 @@
                 if (loadingEl) loadingEl.remove();
                 container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>Connection Error: ' + e.message + '</div>';
             }
-                finally {
-            isStreaming = false;
-            currentAbortController = null;
-            resetGeneratingState();
-        }
-        }
-        function updateProgressUI(percent, stage) {
-
-            const bar = document.getElementById("progressBar");
-            const text = document.getElementById("progressPercent");
-            const stageText = document.getElementById("progressStage");
-
-            if (bar) bar.style.width = percent + "%";
-            if (text) text.innerText = percent;
-            if (stageText && stage) stageText.innerText = stage;
         }
         
         async function createProject() {
