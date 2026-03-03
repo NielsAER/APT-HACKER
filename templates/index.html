@@ -933,6 +933,7 @@
 
             var loadingEl = document.getElementById('loading');
             if (loadingEl) loadingEl.remove();
+            stopSpinner();
             resetGeneratingState();
         }
 
@@ -953,12 +954,14 @@
                 textarea.disabled = true;
                 textarea.classList.add('opacity-50', 'cursor-not-allowed');
             }
-            updateProgressUI(0);
+            // updateProgressUI(0);
         }
+
 
         function resetGeneratingState() {
             isStreaming = false;
             currentAbortController = null;
+            stopSpinner();
 
             var btn = document.getElementById('sendButton');
             var textarea = document.getElementById('messageInput');
@@ -975,7 +978,7 @@
                 textarea.classList.remove('opacity-50', 'cursor-not-allowed');
                 textarea.focus();
             }
-            stopProgressSimulation();
+            // stopProgressSimulation();
         }
         // function startProgressSimulation() {
         //     currentProgress = 0;
@@ -998,14 +1001,76 @@
         //         if (loadingEl) loadingEl.remove();
         //     }, 600);
         // }
+        var spinnerInterval = null;
+        var spinnerFrames = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+        var spinnerMessages = ['Thinking...', 'Analyzing target...', 'Loading context...'];
+        var spinnerFrame = 0;
+        var spinnerMsgIndex = 0;
+        var spinnerMsgCounter = 0;
 
-        function updateProgressUI(value) {
-            var bar = document.getElementById('progressBar');
-            var percent = document.getElementById('progressPercent');
+        function startSpinner() {
+            spinnerFrame = 0;
+            spinnerMsgIndex = 0;
+            spinnerMsgCounter = 0;
 
-            if (bar) bar.style.width = value + '%';
-            if (percent) percent.innerText = value;
+            spinnerInterval = setInterval(function() {
+                var charEl = document.getElementById('spinnerChar');
+                var textEl = document.getElementById('spinnerText');
+                if (!charEl || !textEl) {
+                    clearInterval(spinnerInterval);
+                    return;
+                }
+
+                // Advance braille frame
+                spinnerFrame = (spinnerFrame + 1) % spinnerFrames.length;
+                charEl.textContent = spinnerFrames[spinnerFrame];
+
+                // Cycle message every ~2 seconds (80ms × 25 = 2000ms)
+                spinnerMsgCounter++;
+                if (spinnerMsgCounter % 80 === 0) {
+                    spinnerMsgIndex = (spinnerMsgIndex + 1) % spinnerMessages.length;
+                    textEl.textContent = spinnerMessages[spinnerMsgIndex];
+                }
+            }, 80);
         }
+
+        function stopSpinner() {
+            clearInterval(spinnerInterval);
+            spinnerInterval = null;
+            var loadingEl = document.getElementById('loading');
+            if (loadingEl) loadingEl.remove();
+        }
+        function classifyChunk(text, fullContent) 
+        {
+            var last = fullContent.slice(-200).toLowerCase();
+            
+            if (last.includes('```') || last.includes('    ') || /function|class|import|def |var |const |let /.test(last))
+                return 'Writing code...';
+            if (last.includes('http') || last.includes('curl') || last.includes('nmap') || last.includes('exploit'))
+                return 'Building payload...';
+            if (/\d{1,3}\.\d{1,3}\.\d{1,3}/.test(last) || last.includes('port') || last.includes('scan'))
+                return 'Mapping targets...';
+            if (last.includes('recon') || last.includes('osint') || last.includes('whois') || last.includes('dns'))
+                return 'Running recon...';
+            if (last.includes('vulnerab') || last.includes('cve') || last.includes('exploit') || last.includes('inject'))
+                return 'Analyzing vulnerabilities...';
+            if (last.includes('password') || last.includes('hash') || last.includes('crack') || last.includes('auth'))
+                return 'Processing credentials...';
+            if (last.includes('## ') || last.includes('# ') || last.includes('**') || last.includes('---'))
+                return 'Structuring report...';
+            if (last.includes('step') || last.includes('phase') || last.includes('1.') || last.includes('2.'))
+                return 'Planning attack chain...';
+            
+            return null; // no change
+        }
+
+        // function updateProgressUI(value) {
+        //     var bar = document.getElementById('progressBar');
+        //     var percent = document.getElementById('progressPercent');
+
+        //     if (bar) bar.style.width = value + '%';
+        //     if (percent) percent.innerText = value;
+        // }
         async function sendMessage() {
             if (isStreaming) return;
             if (!currentProject) {
@@ -1074,20 +1139,28 @@
             var displayMessage = imageData ? '[📷 Image attached]\n' + message : message;
             container.innerHTML += formatMessage({ role: 'user', content: displayMessage });
             container.innerHTML += 
-            '<div id="loading" class="flex justify-start">' +
-                '<div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 w-full max-w-md">' +
-                    '<div class="flex items-center gap-3">' +
-                        '<i class="fas fa-skull text-red-500 text-xl animate-pulse"></i>' +
-                        '<div class="flex-1">' +
-                            '<div class="text-sm text-red-400 font-semibold">Executing Operation...</div>' +
-                            '<div class="w-full bg-gray-700 rounded-full h-2 mt-2 overflow-hidden">' +
-                                '<div id="progressBar" class="bg-red-500 h-2 transition-all duration-300" style="width:0%"></div>' +
-                            '</div>' +
-                            '<div class="text-xs text-gray-400 mt-1"><span id="progressPercent">0</span>%</div>' +
-                        '</div>' +
-                    '</div>' +
+                        '<div id="loading" class="flex justify-start my-2">' +
+                '<div class="flex items-center gap-3 px-1 py-2">' +
+                    '<span id="spinnerChar" class="text-green-400 font-mono text-sm w-4 inline-block">⠋</span>' +
+                    '<span id="spinnerText" class="text-gray-400 font-mono text-sm">Thinking...</span>' +
                 '</div>' +
             '</div>';
+            startSpinner();
+            // '<div id="loading" class="flex justify-start">' +
+            //     '<div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 w-full max-w-md">' +
+            //         '<div class="flex items-center gap-3">' +
+            //             '<i class="fas fa-skull text-red-500 text-xl animate-pulse"></i>' +
+            //             '<div class="flex-1">' +
+            //                 '<div class="text-sm text-red-400 font-semibold">Executing Operation...</div>' +
+            //                 '<div class="w-full bg-gray-700 rounded-full h-2 mt-2 overflow-hidden">' +
+            //                     '<div id="progressBar" class="bg-red-500 h-2 transition-all duration-300" style="width:0%"></div>' +
+            //                 '</div>' +
+            //                 '<div class="text-xs text-gray-400 mt-1"><span id="progressPercent">0</span>%</div>' +
+            //             '</div>' +
+            //         '</div>' +
+            //     '</div>' +
+            // '</div>';
+
             if (isNearBottom) container.scrollTop = container.scrollHeight;
             
             try {
@@ -1146,6 +1219,11 @@
                                     var data = JSON.parse(lines[i].slice(6));
                                     if (data.content) {
                                         fullContent += data.content;
+                                        var status = classifyChunk(data.content, fullContent);
+                                        if (status) {
+                                            var textEl = document.getElementById('spinnerText');
+                                            if (textEl) textEl.textContent = status;
+                                        }
                                         var el = document.getElementById(streamId);
                                         if (el) {
                                             try { el.innerHTML = marked.parse(fullContent); }
@@ -1161,6 +1239,7 @@
                                     }
                                     if (data.done) {
                                         updateProgressUI(100);
+                                        resetGeneratingState();
                                     }
                                     if (data.error) {
                                         container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>' + data.error + '</div>';
