@@ -930,11 +930,16 @@
             }
 
             isStreaming = false;
-
-            var loadingEl = document.getElementById('loading');
-            if (loadingEl) loadingEl.remove();
             stopSpinner();
             resetGeneratingState();
+
+           var container = document.getElementById('chatMessages');
+            if (container) {
+                container.innerHTML += 
+                    '<div class="p-3 bg-yellow-900/30 border border-yellow-800 rounded-lg text-yellow-400 text-sm font-mono">' +
+                    '✕ Generation stopped.' +
+                    '</div>';
+            }
         }
 
         function setGeneratingState() {
@@ -1139,10 +1144,15 @@
             var displayMessage = imageData ? '[📷 Image attached]\n' + message : message;
             container.innerHTML += formatMessage({ role: 'user', content: displayMessage });
             container.innerHTML += 
-                        '<div id="loading" class="flex justify-start my-2">' +
-                '<div class="flex items-center gap-3 px-1 py-2">' +
-                    '<span id="spinnerChar" class="text-green-400 font-mono text-sm w-4 inline-block">⠋</span>' +
-                    '<span id="spinnerText" class="text-gray-400 font-mono text-sm">Thinking...</span>' +
+            container.innerHTML += 
+            '<div id="loading" class="flex justify-start my-2">' +
+                '<div class="flex flex-col gap-1 px-1 py-2">' +
+                    '<div class="flex items-center gap-3">' +
+                        '<span id="spinnerChar" class="text-green-400 font-mono text-sm w-4 inline-block">⠋</span>' +
+                        '<span id="spinnerText" class="text-gray-400 font-mono text-sm">Thinking...</span>' +
+                        '<button onclick="stopGeneration()" class="ml-2 px-2 py-0.5 text-xs font-mono text-red-400 border border-red-800 rounded hover:bg-red-900/30 transition-colors">✕ stop</button>' +
+                    '</div>' +
+                    '<div id="spinnerStatus" class="text-xs font-mono text-gray-600 pl-7 h-4 transition-all duration-150"></div>' +
                 '</div>' +
             '</div>';
             startSpinner();
@@ -1180,8 +1190,7 @@
                     signal: currentAbortController.signal
                 });
                 
-                var loadingEl = document.getElementById('loading');
-                if (loadingEl) loadingEl.remove();
+
                 
                 if (res.headers.get('content-type') && res.headers.get('content-type').includes('event-stream')) {
                     var reader = res.body.getReader();
@@ -1221,8 +1230,8 @@
                                         fullContent += data.content;
                                         var status = classifyChunk(data.content, fullContent);
                                         if (status) {
-                                            var textEl = document.getElementById('spinnerText');
-                                            if (textEl) textEl.textContent = status;
+                                            var statusEl = document.getElementById('spinnerStatus');
+                                            if (statusEl) statusEl.textContent = '↳ ' + status;
                                         }
                                         var el = document.getElementById(streamId);
                                         if (el) {
@@ -1234,11 +1243,8 @@
                                             container.scrollTop = container.scrollHeight;
                                         }
                                     }
-                                    if(data.progress !== undefined) {
-                                        updateProgressUI(data.progress);
-                                    }
-                                    if (data.done) {
-                                        updateProgressUI(100);
+                                    
+                                    if (data.done) {                                       
                                         resetGeneratingState();
                                     }
                                     if (data.error) {
