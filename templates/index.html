@@ -1072,26 +1072,21 @@
             // Show user message with image indicator if applicable
             var displayMessage = imageData ? '[📷 Image attached]\n' + message : message;
             container.innerHTML += formatMessage({ role: 'user', content: displayMessage });
-            container.innerHTML += `
-            <div id="loading" class="flex justify-start">
-            <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 w-full max-w-md">
-                <div class="flex items-center gap-3">
-                <i class="fas fa-skull text-red-500 text-xl"></i>
-                <div class="flex-1">
-                    <div id="progressStage" class="text-sm text-red-400 font-semibold">
-                    Initializing...
-                    </div>
-                    <div class="w-full bg-gray-700 rounded-full h-2 mt-2 overflow-hidden">
-                    <div id="progressBar" class="bg-red-500 h-2 transition-all duration-300" style="width:0%"></div>
-                    </div>
-                    <div class="text-xs text-gray-400 mt-1">
-                    <span id="progressPercent">0</span>%
-                    </div>
-                </div>
-                </div>
-            </div>
-            </div>
-            `;
+            container.innerHTML += 
+            '<div id="loading" class="flex justify-start">' +
+                '<div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 w-full max-w-md">' +
+                    '<div class="flex items-center gap-3">' +
+                        '<i class="fas fa-skull text-red-500 text-xl animate-pulse"></i>' +
+                        '<div class="flex-1">' +
+                            '<div class="text-sm text-red-400 font-semibold">Executing Operation...</div>' +
+                            '<div class="w-full bg-gray-700 rounded-full h-2 mt-2 overflow-hidden">' +
+                                '<div id="progressBar" class="bg-red-500 h-2 transition-all duration-300" style="width:0%"></div>' +
+                            '</div>' +
+                            '<div class="text-xs text-gray-400 mt-1"><span id="progressPercent">0</span>%</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
             if (isNearBottom) container.scrollTop = container.scrollHeight;
             
             try {
@@ -1152,10 +1147,10 @@
                                     if (data.content) {
                                         fullContent += data.content;
                                         // Boost progress when tokens arrive
-                                        if (currentProgress < 95) {
-                                            currentProgress += 2;
-                                            updateProgressUI(Math.min(95, currentProgress));
-                                        }
+                                    if (currentProgress < 95) {
+                                        currentProgress += 2;
+                                        updateProgressUI(Math.min(95, currentProgress));
+                                    }git 
                                         var el = document.getElementById(streamId);
                                         if (el) {
                                             try { el.innerHTML = marked.parse(fullContent); }
