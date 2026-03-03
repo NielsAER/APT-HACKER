@@ -1229,10 +1229,10 @@
                                     if (data.content) {
                                         fullContent += data.content;
                                         var status = classifyChunk(data.content, fullContent);
-                                        if (status) {
+                                        
                                             var statusEl = document.getElementById('spinnerStatus');
                                             if (statusEl) statusEl.textContent = '↳ ' + status;
-                                        }
+                                        
                                         var el = document.getElementById(streamId);
                                         if (el) {
                                             try { el.innerHTML = marked.parse(fullContent); }
@@ -1258,8 +1258,8 @@
                                         container.innerHTML += 
                                             '<div class="p-4 bg-yellow-900/30 border border-yellow-800 rounded-lg text-yellow-400">' +
                                             '<i class="fas fa-stop mr-2"></i>Generation stopped.' +
-                                            '</div>';
-                                    } resetGeneratingState();
+                                            '</div>'; resetGeneratingState();
+                                    } 
                                 }
                             }
                         }
