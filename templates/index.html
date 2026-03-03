@@ -1146,11 +1146,6 @@
                                     var data = JSON.parse(lines[i].slice(6));
                                     if (data.content) {
                                         fullContent += data.content;
-                                        // Boost progress when tokens arrive
-                                    if (currentProgress < 95) {
-                                        currentProgress += 2;
-                                        updateProgressUI(Math.min(95, currentProgress));
-                                    }git 
                                         var el = document.getElementById(streamId);
                                         if (el) {
                                             try { el.innerHTML = marked.parse(fullContent); }
