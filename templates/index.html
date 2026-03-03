@@ -750,20 +750,7 @@
                 deleteProject(id);
             }
         }
-        // Stop generating and reset state
-        function stopGeneration() {
-            if (currentAbortController) {
-                currentAbortController.abort();
-                currentAbortController = null;
-            }
-
-            isStreaming = false;
-
-            var loadingEl = document.getElementById('loading');
-            if (loadingEl) loadingEl.remove();
-            resetGeneratingState();
-        }
-
+      
 
         // Delete project
         async function deleteProject(id) {
@@ -935,6 +922,19 @@
                 });
             }
         }
+  // Stop generating and reset state
+        function stopGeneration() {
+            if (currentAbortController) {
+                currentAbortController.abort();
+                currentAbortController = null;
+            }
+
+            isStreaming = false;
+
+            var loadingEl = document.getElementById('loading');
+            if (loadingEl) loadingEl.remove();
+            resetGeneratingState();
+        }
 
         function setGeneratingState() {
         isStreaming = true;
@@ -953,7 +953,7 @@
                 textarea.disabled = true;
                 textarea.classList.add('opacity-50', 'cursor-not-allowed');
             }
-            startProgressSimulation();
+            updateProgressUI(0);
         }
 
         function resetGeneratingState() {
@@ -977,27 +977,27 @@
             }
             stopProgressSimulation();
         }
-        function startProgressSimulation() {
-            currentProgress = 0;
-            updateProgressUI(0);
+        // function startProgressSimulation() {
+        //     currentProgress = 0;
+        //     updateProgressUI(0);
 
-            progressInterval = setInterval(function() {
-                if (currentProgress < 90) {
-                    currentProgress += Math.random() * 5;
-                    updateProgressUI(Math.floor(currentProgress));
-                }
-            }, 400);
-        }
+        //     progressInterval = setInterval(function() {
+        //         if (currentProgress < 90) {
+        //             currentProgress += Math.random() * 5;
+        //             updateProgressUI(Math.floor(currentProgress));
+        //         }
+        //     }, 400);
+        // }
 
-        function stopProgressSimulation() {
-            clearInterval(progressInterval);
-            updateProgressUI(100);
+        // function stopProgressSimulation() {
+        //     clearInterval(progressInterval);
+        //     updateProgressUI(100);
 
-            setTimeout(function() {
-                var loadingEl = document.getElementById('loading');
-                if (loadingEl) loadingEl.remove();
-            }, 600);
-        }
+        //     setTimeout(function() {
+        //         var loadingEl = document.getElementById('loading');
+        //         if (loadingEl) loadingEl.remove();
+        //     }, 600);
+        // }
 
         function updateProgressUI(value) {
             var bar = document.getElementById('progressBar');
@@ -1017,6 +1017,7 @@
             var message = textarea.value.trim();
             var imageData = null;
             var imageMime = null;
+            var userScrolledUp = false;
             
             // Handle file upload
             if (selectedFile) {
@@ -1121,8 +1122,7 @@
                         '<div class="prose prose-sm max-w-none" id="' + streamId + '"></div></div>';
                     container.appendChild(responseDiv);
                     
-                    // Track user scroll position during streaming
-                    var userScrolledUp = false;
+                    
                     var scrollHandler = function() {
                         var nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
                         userScrolledUp = !nearBottom;
@@ -1155,6 +1155,12 @@
                                         if (!userScrolledUp) {
                                             container.scrollTop = container.scrollHeight;
                                         }
+                                    }
+                                    if(data.progress !== undefined) {
+                                        updateProgressUI(data.progress);
+                                    }
+                                    if (data.done) {
+                                        updateProgressUI(100);
                                     }
                                     if (data.error) {
                                         container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>' + data.error + '</div>';

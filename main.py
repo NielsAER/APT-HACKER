@@ -2309,10 +2309,13 @@ def chat(project_id):
             
             def generate():
                 full_response = []
+                total_chars = 0
                 try:
                     for chunk in call_llm_streaming(messages):
                         full_response.append(chunk)
-                        yield f"data: {json.dumps({'content': chunk})}\n\n"
+                        total_chars += len(chunk)
+                        estimated_progress = min(95, int((total_chars / (16000*4))* 100) )  # Rough progress estimation
+                        yield f"data: {json.dumps({'content': chunk, 'progress': estimated_progress})}\n\n"
                     response_text = "".join(full_response)
                     try:
                         import sqlite3
