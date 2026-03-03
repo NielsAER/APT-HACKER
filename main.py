@@ -1454,7 +1454,7 @@ def call_llm_streaming(messages, max_tokens=16000):
         url, headers, model = "https://api.openai.com/v1/chat/completions", {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}, LLM_MODEL or "gpt-4"
     
     try:
-        response = requests.post(url, headers=headers, json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.8, "stream": True}, stream=True, timeout=180)
+        response = requests.post(url, headers=headers, json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.8, "stream": True}, stream=True, timeout=(10,300))
         if response.status_code == 401:
             raise Exception(f"401 Unauthorized: Invalid or expired {LLM_PROVIDER.upper()} API key")
         elif response.status_code == 402:
@@ -1469,14 +1469,27 @@ def call_llm_streaming(messages, max_tokens=16000):
     except requests.exceptions.Timeout:
         raise Exception(f"Request timeout to {LLM_PROVIDER.upper()} API")
     
-    for line in response.iter_lines():
-        if line:
-            line = line.decode('utf-8')
-            if line.startswith('data: ') and line[6:] != '[DONE]':
-                try:
-                    content = json.loads(line[6:]).get('choices', [{}])[0].get('delta', {}).get('content', '')
-                    if content: yield content
-                except: pass
+    for line in response.iter_lines(decode_unicode=True):
+
+        if not line:
+            continue
+
+        if not line.startswith("data:"):
+            continue
+
+        payload = line[5:].strip()
+
+        if payload == "[DONE]":
+            break
+
+        try:
+            data = json.loads(payload)
+            delta = data.get("choices", [{}])[0].get("delta", {})
+            content = delta.get("content")
+            if content:
+                yield content
+        except Exception:
+            continue
 
 def call_llm_sync(messages, max_tokens=16000):
     if not LLM_API_KEY:
@@ -2225,7 +2238,14 @@ Analyze and provide:
         "analysis_prompt": analysis_request,
         "content_preview": content[:5000]
     })
+import tiktoken
 
+enc = tiktoken.get_encoding("cl100k_base")
+
+def estimate_tokens(text):
+    if not text:
+        return 0
+    return len(enc.encode(text))
 @app.route("/api/projects/<project_id>/chat", methods=["POST"])
 def chat(project_id):
     try:
@@ -2306,38 +2326,115 @@ def chat(project_id):
         
         if USE_STREAMING:
             db_path = DATABASE
-            
             def generate():
                 full_response = []
+                generated_tokens = 0
+
                 try:
+                    # Estimate input tokens honestly
+                    input_tokens = sum(
+                        estimate_tokens(m["content"]) 
+                        if isinstance(m["content"], str)
+                        else estimate_tokens(json.dumps(m["content"]))
+                        for m in messages
+                    )
+                    MAX_CONTEXT = 16000
+                    max_output_tokens =  max(512, MAX_CONTEXT - input_tokens - 500)  # must match your model call
+                    total_expected_tokens = input_tokens + max_output_tokens
+
+                    # Initial progress
+                    yield f"data: {json.dumps({'type':'progress','percent':5,'stage':'Initializing model'})}\n\n"
+
                     for chunk in call_llm_streaming(messages):
+
                         full_response.append(chunk)
-                        yield f"data: {json.dumps({'content': chunk})}\n\n"
+
+                        # Count real generated tokens
+                        token_count = estimate_tokens(chunk)
+                        generated_tokens += token_count
+
+                        percent = int(
+                            min(
+                                95,
+                                ((generated_tokens + input_tokens) / total_expected_tokens) * 100
+                            )
+                        )
+
+                        # Send honest progress
+                        yield f"data: {json.dumps({'type':'progress','percent':percent,'stage':'Generating'})}\n\n"
+
+                        # Send actual token
+                        yield f"data: {json.dumps({'type':'token','content':chunk})}\n\n"
+
                     response_text = "".join(full_response)
+
+                    # Save assistant response
                     try:
                         import sqlite3
                         conn = sqlite3.connect(db_path)
                         cursor = conn.cursor()
-                        cursor.execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project_id, "assistant", response_text))
-                        cursor.execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (project_id,))
+                        cursor.execute(
+                            "INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)",
+                            (project_id, "assistant", response_text)
+                        )
+                        cursor.execute(
+                            "UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                            (project_id,)
+                        )
                         conn.commit()
                         conn.close()
                     except Exception as db_err:
                         print(f"DB save error: {db_err}")
-                    yield f"data: {json.dumps({'done': True})}\n\n"
-                except Exception as e: 
-                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
-            return Response(generate(), mimetype='text/event-stream')
+
+                    # Final progress
+                    yield f"data: {json.dumps({'type':'progress','percent':100,'stage':'Complete'})}\n\n"
+                    yield f"data: {json.dumps({'type':'complete'})}\n\n"
+
+                except Exception as e:
+                    yield f"data: {json.dumps({'type':'error','error':str(e)})}\n\n"
+                    return Response(generate(), mimetype='text/event-stream')
         else:
             response = call_llm_sync(messages)
             db_execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project_id, "assistant", response))
             db_execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (project_id,))
             return jsonify({"response": response})
-            
+                        
     except Exception as e:
         import traceback
         print(f"Chat endpoint error: {traceback.format_exc()}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+    #         def generate():
+    #             full_response = []
+    #             try:
+    #                 for chunk in call_llm_streaming(messages):
+    #                     full_response.append(chunk)
+    #                     yield f"data: {json.dumps({'content': chunk})}\n\n"
+    #                 response_text = "".join(full_response)
+    #                 try:
+    #                     import sqlite3
+    #                     conn = sqlite3.connect(db_path)
+    #                     cursor = conn.cursor()
+    #                     cursor.execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project_id, "assistant", response_text))
+    #                     cursor.execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (project_id,))
+    #                     conn.commit()
+    #                     conn.close()
+    #                 except Exception as db_err:
+    #                     print(f"DB save error: {db_err}")
+    #                 yield f"data: {json.dumps({'done': True})}\n\n"
+    #             except Exception as e: 
+    #                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    #         return Response(generate(), mimetype='text/event-stream')
+    #     else:
+    #         response = call_llm_sync(messages)
+    #         db_execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project_id, "assistant", response))
+    #         db_execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (project_id,))
+    #         return jsonify({"response": response})
+            
+    # except Exception as e:
+    #     import traceback
+    #     print(f"Chat endpoint error: {traceback.format_exc()}")
+    #     return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/osint/quick", methods=["POST"])
 def quick_osint():
