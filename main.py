@@ -23,6 +23,9 @@ Features:
 
 by XPOSE Security
 """
+import tiktoken
+
+enc = tiktoken.get_encoding("cl100k_base")
 
 import os
 import json
@@ -2238,9 +2241,7 @@ Analyze and provide:
         "analysis_prompt": analysis_request,
         "content_preview": content[:5000]
     })
-import tiktoken
 
-enc = tiktoken.get_encoding("cl100k_base")
 
 def estimate_tokens(text):
     if not text:
