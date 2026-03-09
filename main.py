@@ -49,7 +49,7 @@ from email.mime.base import MIMEBase
 from email import encoders
 import requests
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, jsonify, Response, g
+from flask import Flask, render_template, request, jsonify, Response, g,redirect, url_for, session
 from pathlib import Path
 
 # Postgres support
@@ -69,7 +69,9 @@ except ImportError:
         pass
 
 app = Flask(__name__)
+from datetime import timedelta
 app.secret_key = os.environ.get("SESSION_SECRET", os.urandom(32).hex())
+app.permanent_session_lifetime = timedelta(hours=12)
 
 # Configuration
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "deepseek")
@@ -85,6 +87,7 @@ CENSYS_API_ID = os.environ.get("CENSYS_API_ID", "")
 CENSYS_API_SECRET = os.environ.get("CENSYS_API_SECRET", "")
 VIRUSTOTAL_API_KEY = os.environ.get("VIRUSTOTAL_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+OPERATOR_PASSWORD   = os.environ.get("OPERATOR_PASSWORD", "xpose2024") 
 GMAIL_ADDRESS      = os.environ.get("GMAIL_ADDRESS", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
 
@@ -1529,9 +1532,35 @@ def call_llm_sync(messages, max_tokens=16000):
     raise Exception(f"Failed after 3 retries - context too large for {LLM_PROVIDER.upper()}")
 
 # API Routes
+def require_login():
+    if not session.get("logged_in"):
+        return redirect(url_for("login"))
+    return None
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        password = request.form.get("password", "").strip()
+        if password == OPERATOR_PASSWORD:
+            session["logged_in"] = True
+            session.permanent = True
+            return redirect(url_for("index"))
+        error = "Invalid password"
+
+    # Render login.html (must be in your templates/ folder)
+    return render_template("login.html", error=error)
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 @app.route("/")
 def index():
+    guard = require_login()
+    if guard:
+        return guard
     return render_template("index.html")
 
 @app.route("/api/health", methods=["GET"])
