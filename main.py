@@ -69,8 +69,8 @@ except ImportError:
         pass
 
 app = Flask(__name__, static_folder="static", static_url_path="")
-from datetime import timedelta
-app.secret_key = os.environ.get("SESSION_SECRET", os.urandom(32).hex())
+from datetime import datetime, timedelta
+app.secret_key = os.environ.get("SESSION_SECRET", "xpose-secret-key-change-me-2024")
 app.permanent_session_lifetime = timedelta(hours=12)
 
 # Configuration
