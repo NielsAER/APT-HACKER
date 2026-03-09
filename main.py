@@ -51,6 +51,7 @@ import requests
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, Response, g,redirect, url_for, session
 from pathlib import Path
+import hashlib
 
 # Postgres support
 HAS_POSTGRES = False
@@ -178,11 +179,18 @@ def init_db():
         conn.close()
     else:
         conn = get_sqlite_conn()
-        conn.executescript('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, target TEXT, framework TEXT, status TEXT DEFAULT \'active\', findings TEXT DEFAULT \'[]\', impact_analysis TEXT DEFAULT \'{}\', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, phase TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS osint_data (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, data_type TEXT NOT NULL, data TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);')
+        conn.executescript('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, target TEXT, framework TEXT, status TEXT DEFAULT \'active\', findings TEXT DEFAULT \'[]\', impact_analysis TEXT DEFAULT \'{}\', owner TEXT created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, phase TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS osint_data (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, data_type TEXT NOT NULL, data TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);')
         conn.commit()
         conn.close()
     _db_initialized = True
 
+def get_user_project(project_id):
+    """Fetch project only if it belongs to the logged-in user."""
+    owner = session.get("username", "unknown")
+    project = db_execute(
+        "SELECT * FROM projects WHERE id = ? AND owner = ?",
+        (project_id, owner), fetchone=True)
+    return project
 @app.before_request
 def ensure_db_initialized():
     global _db_initialized
@@ -1526,21 +1534,55 @@ def require_login():
     if not session.get("logged_in"):
         return redirect(url_for("login"))
     return None
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
+def create_user(username, password):
+    user_id = str(uuid.uuid4())
+    try:
+        db_execute("INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)",
+            (user_id, username.strip().lower(), hash_password(password)))
+        return True
+    except Exception:
+        return False  # username already exists
+
+def verify_user(username, password):
+    user = db_execute(
+        "SELECT * FROM users WHERE username = ? AND password_hash = ?",
+        (username.strip().lower(), hash_password(password)),
+        fetchone=True
+    )
+    return user
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
     if request.method == "POST":
+        action   = request.form.get("action", "login")
+        username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
-        if password == OPERATOR_PASSWORD:
-            session["logged_in"] = True
-            session.permanent = True
-            return redirect(url_for("index"))
-        error = "Invalid password"
 
-    # Render login.html (must be in your templates/ folder)
+        if action == "register":
+            if len(password) < 8:
+                error = "Password must be at least 8 characters"
+            elif create_user(username, password):
+                session["logged_in"] = True
+                session["username"]  = username
+                session.permanent    = True
+                return redirect(url_for("index"))
+            else:
+                error = "Username already taken"
+
+        else:  # login
+            user = verify_user(username, password)
+            if user:
+                session["logged_in"] = True
+                session["username"]  = user["username"]
+                session.permanent    = True
+                return redirect(url_for("index"))
+            else:
+                error = "Invalid username or password"
+
     return render_template("login.html", error=error)
-
 @app.route("/logout")
 def logout():
     session.clear()
@@ -1559,7 +1601,10 @@ def health():
 
 @app.route("/api/projects", methods=["GET"])
 def list_projects():
-    return jsonify(db_execute("SELECT * FROM projects ORDER BY updated_at DESC", fetchall=True))
+    owner = session.get("username", "unknown")
+    return jsonify(db_execute(
+        "SELECT * FROM projects WHERE owner = ? ORDER BY updated_at DESC",
+        (owner,), fetchall=True))
 
 @app.route("/api/projects", methods=["POST"])
 def create_project():
@@ -1569,17 +1614,18 @@ def create_project():
     target = data.get("target", "")
     name = data.get("name", f"Project-{project_id[:8]}")
     impact_analysis = {}
+    owner = session.get("username", "unknown")
     if project_type == "apt" and target:
         osint_data = gather_comprehensive_osint(target)
         industry = detect_industry(target, osint_data)
         impact_analysis = calculate_impact_analysis(target, osint_data, industry)
         db_execute("INSERT INTO osint_data (project_id, data_type, data) VALUES (?, ?, ?)", (project_id, "comprehensive", json.dumps(osint_data)))
-    db_execute("INSERT INTO projects (id, name, type, target, framework, impact_analysis) VALUES (?, ?, ?, ?, ?, ?)", (project_id, name, project_type, target, data.get("framework", ""), json.dumps(impact_analysis)))
+    db_execute("INSERT INTO projects (id, name, type, target, framework, impact_analysis, owner) VALUES (?, ?, ?, ?, ?, ?, ?)", (project_id, name, project_type, target, data.get("framework", ""), json.dumps(impact_analysis), owner))
     return jsonify({"id": project_id, "name": name, "type": project_type, "target": target, "impact_analysis": impact_analysis})
 
 @app.route("/api/projects/<project_id>", methods=["GET"])
 def get_project(project_id):
-    project = db_execute("SELECT * FROM projects WHERE id = ?", (project_id,), fetchone=True)
+    project = get_user_project(project_id)
     if not project: return jsonify({"error": "Project not found"}), 404
     try: project["impact_analysis"] = json.loads(project.get("impact_analysis", "{}"))
     except: project["impact_analysis"] = {}
@@ -1587,12 +1633,14 @@ def get_project(project_id):
 
 @app.route("/api/projects/<project_id>", methods=["DELETE"])
 def delete_project(project_id):
-    db_execute("DELETE FROM projects WHERE id = ?", (project_id,))
+    owner = session.get("username", "unknown")
+    db_execute("DELETE FROM projects WHERE id = ? AND owner = ?", (project_id, owner))
     return jsonify({"success": True})
 
 @app.route("/api/projects/<project_id>/osint", methods=["GET"])
 def get_project_osint(project_id):
-    osint = db_execute("SELECT * FROM osint_data WHERE project_id = ? ORDER BY created_at DESC LIMIT 1", (project_id,), fetchone=True)
+    owner = session.get("username", "unknown")
+    osint = db_execute("SELECT * FROM osint_data WHERE project_id = ? AND project_id IN (SELECT id FROM projects WHERE owner = ?) ORDER BY created_at DESC LIMIT 1", (project_id, owner), fetchone=True)
     if osint:
         try: osint["data"] = json.loads(osint.get("data", "{}"))
         except: pass
@@ -1600,7 +1648,7 @@ def get_project_osint(project_id):
 
 @app.route("/api/projects/<project_id>/osint/refresh", methods=["POST"])
 def refresh_osint(project_id):
-    project = db_execute("SELECT * FROM projects WHERE id = ?", (project_id,), fetchone=True)
+    project = get_user_project(project_id)
     if not project: return jsonify({"error": "Project not found"}), 404
     target = project.get("target", "")
     if not target: return jsonify({"error": "No target specified"}), 400
@@ -1613,7 +1661,8 @@ def refresh_osint(project_id):
 
 @app.route("/api/projects/<project_id>/messages", methods=["GET"])
 def get_messages(project_id):
-    return jsonify(db_execute("SELECT * FROM messages WHERE project_id = ? ORDER BY created_at ASC", (project_id,), fetchall=True))
+    owner = session.get("username", "unknown")
+    return jsonify(db_execute("SELECT * FROM messages WHERE project_id = ? AND project_id IN (SELECT id FROM projects WHERE owner = ?) ORDER BY created_at ASC", (project_id, owner), fetchall=True))
 
 @app.route("/api/projects/<project_id>/upload", methods=["POST"])
 def upload_file(project_id):
@@ -2268,7 +2317,7 @@ def chat(project_id):
         if not user_message and not image_data: 
             return jsonify({"error": "Message or image required"}), 400
         
-        project = db_execute("SELECT * FROM projects WHERE id = ?", (project_id,), fetchone=True)
+        project = get_user_project(project_id)
         if not project: 
             return jsonify({"error": "Project not found"}), 404
         
