@@ -41,6 +41,12 @@ if env_file.exists():
 import re
 import uuid
 import random
+import smtplib
+import ssl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 import requests
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, Response, g
@@ -79,6 +85,8 @@ CENSYS_API_ID = os.environ.get("CENSYS_API_ID", "")
 CENSYS_API_SECRET = os.environ.get("CENSYS_API_SECRET", "")
 VIRUSTOTAL_API_KEY = os.environ.get("VIRUSTOTAL_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+GMAIL_ADDRESS      = os.environ.get("GMAIL_ADDRESS", "")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
 
 KNOWLEDGE_PATH = Path("knowledge")
 DATABASE = "xpose_v7.db"
@@ -1521,13 +1529,14 @@ def call_llm_sync(messages, max_tokens=16000):
     raise Exception(f"Failed after 3 retries - context too large for {LLM_PROVIDER.upper()}")
 
 # API Routes
+
 @app.route("/")
 def index():
     return render_template("index.html")
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"status": "operational", "version": "8.0", "llm_configured": bool(LLM_API_KEY), "llm_provider": LLM_PROVIDER, "shodan_configured": bool(SHODAN_API_KEY), "dehashed_configured": bool(DEHASHED_API_KEY), "hunter_configured": bool(HUNTER_API_KEY), "telegram_configured": bool(TELEGRAM_BOT_TOKEN)})
+    return jsonify({"status": "operational", "version": "8.0", "llm_configured": bool(LLM_API_KEY), "llm_provider": LLM_PROVIDER, "shodan_configured": bool(SHODAN_API_KEY), "dehashed_configured": bool(DEHASHED_API_KEY), "hunter_configured": bool(HUNTER_API_KEY), "telegram_configured": bool(TELEGRAM_BOT_TOKEN), "email_configured": bool(GMAIL_ADDRESS and GMAIL_APP_PASSWORD)})
 
 @app.route("/api/projects", methods=["GET"])
 def list_projects():
@@ -3037,6 +3046,84 @@ Open: https://onedrive.{attacker_domain}/view/{uuid.uuid4().hex[:24]}'''
     template["generated_at"] = datetime.now().isoformat()
     
     return jsonify(template)
+
+# ── Gmail App Password Email ──────────────────────────────────────────────────
+
+def send_email(to, subject, html_body, from_name=None, reply_to=None, attachments=None):
+    """Send email via Gmail SMTP App Password. Returns {"success": True} or {"success": False, "error": str}"""
+    if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
+        return {"success": False, "error": "GMAIL_ADDRESS / GMAIL_APP_PASSWORD not configured"}
+
+    display_from = f"{from_name} <{GMAIL_ADDRESS}>" if from_name else GMAIL_ADDRESS
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = display_from
+    msg["To"]      = to
+    if reply_to:
+        msg["Reply-To"] = reply_to
+    msg.attach(MIMEText(html_body, "html"))
+
+    for att in (attachments or []):
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(att["data"])
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f'attachment; filename="{att["filename"]}"')
+        msg.attach(part)
+
+    try:
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as server:
+            server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_ADDRESS, to, msg.as_string())
+        return {"success": True}
+    except smtplib.SMTPAuthenticationError:
+        return {"success": False, "error": "Auth failed — check GMAIL_ADDRESS and GMAIL_APP_PASSWORD"}
+    except smtplib.SMTPRecipientsRefused:
+        return {"success": False, "error": f"Recipient refused: {to}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.route("/api/email/send", methods=["POST"])
+def send_email_route():
+    """
+    POST /api/email/send
+    Body: { "to": "...", "subject": "...", "html": "...", "from_name": "...", "reply_to": "..." }
+    """
+    data    = request.json or {}
+    to      = (data.get("to") or "").strip()
+    subject = (data.get("subject") or "").strip()
+    html    = (data.get("html") or "").strip()
+
+    if not to or not subject or not html:
+        return jsonify({"error": "to, subject, and html are required"}), 400
+
+    result = send_email(
+        to        = to,
+        subject   = subject,
+        html_body = html,
+        from_name = data.get("from_name"),
+        reply_to  = data.get("reply_to"),
+    )
+    if result["success"]:
+        return jsonify({"success": True, "message": f"Email sent to {to}"})
+    return jsonify({"error": result["error"]}), 500
+
+
+@app.route("/api/email/test", methods=["POST"])
+def test_email_config():
+    """POST /api/email/test — sends test email to yourself to verify App Password works."""
+    if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
+        return jsonify({"error": "GMAIL_ADDRESS / GMAIL_APP_PASSWORD not set"}), 503
+    result = send_email(
+        to        = GMAIL_ADDRESS,
+        subject   = "[XPOSE APT] SMTP Test",
+        html_body = "<p>SMTP is working correctly via Gmail App Password.</p>",
+        from_name = "XPOSE APT AI",
+    )
+    if result["success"]:
+        return jsonify({"success": True, "message": f"Test email sent to {GMAIL_ADDRESS}"})
+    return jsonify({"error": result["error"]}), 500
 
 # Telegram Bot
 def telegram_send_message(chat_id, text, parse_mode="Markdown"):

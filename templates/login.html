@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XPOSE APT AI — Auth</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --red: #ef4444; --red-dim: #7f1d1d; --green: #22c55e;
+            --bg: #050508; --surface: #0d0d14; --border: rgba(239,68,68,0.25);
+            --text: #c9d1d9; --muted: #4b5563;
+            --font-mono: 'Share Tech Mono', monospace;
+            --font-display: 'Orbitron', sans-serif;
+        }
+        * { margin:0;padding:0;box-sizing:border-box; }
+        body { background:var(--bg);min-height:100vh;font-family:var(--font-mono);color:var(--text);display:flex;align-items:center;justify-content:center;overflow:hidden; }
+        body::before { content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(239,68,68,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(239,68,68,0.04) 1px,transparent 1px);background-size:40px 40px;pointer-events:none; }
+        body::after { content:'';position:fixed;top:-200px;left:0;right:0;height:200px;background:linear-gradient(transparent,rgba(239,68,68,0.03),transparent);animation:scan 8s linear infinite;pointer-events:none; }
+        @keyframes scan { to { top:100vh; } }
+        .corner { position:fixed;width:80px;height:80px;pointer-events:none; }
+        .corner-tl { top:20px;left:20px;border-top:2px solid var(--red);border-left:2px solid var(--red); }
+        .corner-tr { top:20px;right:20px;border-top:2px solid var(--red);border-right:2px solid var(--red); }
+        .corner-bl { bottom:20px;left:20px;border-bottom:2px solid var(--red);border-left:2px solid var(--red); }
+        .corner-br { bottom:20px;right:20px;border-bottom:2px solid var(--red);border-right:2px solid var(--red); }
+        .status-bar { position:fixed;top:24px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted);letter-spacing:3px;display:flex;gap:24px; }
+        .status-bar span { display:flex;align-items:center;gap:6px; }
+        .dot { width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 2s ease-in-out infinite; }
+        .dot.red { background:var(--red);box-shadow:0 0 8px var(--red);animation-delay:1s; }
+        @keyframes blink { 0%,100%{opacity:1}50%{opacity:.3} }
+        .card { width:400px;background:var(--surface);border:1px solid var(--border);box-shadow:0 0 60px rgba(239,68,68,0.07),inset 0 1px 0 rgba(255,255,255,0.04);animation:cardIn .6s cubic-bezier(.16,1,.3,1) both; }
+        @keyframes cardIn { from{opacity:0;transform:translateY(20px) scale(.98)} to{opacity:1;transform:none} }
+        .card-bar { height:3px;background:linear-gradient(90deg,transparent,var(--red),transparent); }
+        .card-inner { padding:40px 36px 36px; }
+        .logo { text-align:center;margin-bottom:40px; }
+        .logo-icon { width:56px;height:56px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;position:relative; }
+        .logo-icon::before,.logo-icon::after { content:'';position:absolute;width:8px;height:8px;border:1px solid var(--red); }
+        .logo-icon::before { top:-4px;left:-4px;border-right:none;border-bottom:none; }
+        .logo-icon::after { bottom:-4px;right:-4px;border-left:none;border-top:none; }
+        .logo-icon i { color:var(--red);font-size:22px; }
+        .logo-title { font-family:var(--font-display);font-size:22px;font-weight:900;letter-spacing:4px;color:#fff; }
+        .logo-sub { font-size:10px;color:var(--muted);letter-spacing:4px;margin-top:4px; }
+        .cursor { display:inline-block;width:8px;height:14px;background:var(--red);vertical-align:middle;animation:cb 1s step-end infinite;margin-left:2px; }
+        @keyframes cb { 0%,100%{opacity:1}50%{opacity:0} }
+        .divider { display:flex;align-items:center;gap:12px;margin:0 0 28px; }
+        .divider::before,.divider::after { content:'';flex:1;height:1px;background:rgba(255,255,255,0.06); }
+        .divider span { font-size:10px;color:var(--muted);letter-spacing:2px;white-space:nowrap; }
+        .btn-google { width:100%;display:flex;align-items:center;justify-content:center;gap:12px;padding:15px 20px;background:#fff;border:none;cursor:pointer;font-family:var(--font-display);font-size:12px;font-weight:700;letter-spacing:2px;color:#1f2937;position:relative;overflow:hidden;transition:all .2s; }
+        .btn-google:hover { background:#f1f5f9;transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,0,0,0.4); }
+        .btn-google:active { transform:translateY(0); }
+        .btn-google:disabled { opacity:.5;cursor:not-allowed;transform:none; }
+        .btn-google::before { content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent);transform:translateX(-100%);transition:transform .5s; }
+        .btn-google:hover::before { transform:translateX(100%); }
+        .g-icon { width:20px;height:20px;flex-shrink:0; }
+        .msg { margin-bottom:20px;padding:10px 14px;font-size:11px;letter-spacing:1px;align-items:center;gap:8px;display:none; }
+        .msg.error { display:flex;background:rgba(239,68,68,0.1);border-left:3px solid var(--red);color:#fca5a5; }
+        .msg.info  { display:flex;background:rgba(59,130,246,0.1);border-left:3px solid #3b82f6;color:#93c5fd; }
+        .features { margin-top:28px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.05);display:grid;grid-template-columns:1fr 1fr;gap:10px; }
+        .feat { display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);letter-spacing:1px; }
+        .feat i { color:var(--red);font-size:9px; }
+        .card-footer { border-top:1px solid rgba(255,255,255,0.04);padding:14px 36px;text-align:center;font-size:10px;color:var(--muted);letter-spacing:1px; }
+        .loading-overlay { display:none;position:fixed;inset:0;background:rgba(5,5,8,0.9);align-items:center;justify-content:center;flex-direction:column;gap:16px;z-index:100; }
+        .loading-overlay.show { display:flex; }
+        .spinner { font-size:32px;color:var(--red);animation:spin .8s linear infinite; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        .loading-text { font-size:11px;letter-spacing:4px;color:var(--muted); }
+    </style>
+</head>
+<body>
+    <div class="corner corner-tl"></div>
+    <div class="corner corner-tr"></div>
+    <div class="corner corner-bl"></div>
+    <div class="corner corner-br"></div>
+
+    <div class="status-bar">
+        <span><span class="dot"></span>SYSTEM ONLINE</span>
+        <span><span class="dot red"></span>ENCRYPTED</span>
+        <span id="clock"></span>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <i class="fas fa-crosshairs spinner"></i>
+        <div class="loading-text">AUTHENTICATING WITH GOOGLE...</div>
+    </div>
+
+    <div class="card">
+        <div class="card-bar"></div>
+        <div class="card-inner">
+
+            <div class="logo">
+                <div class="logo-icon"><i class="fas fa-crosshairs"></i></div>
+                <div class="logo-title">XPOSE<span style="color:var(--red)">_</span>APT</div>
+                <div class="logo-sub">v7.4 · Nation-State Simulation<span class="cursor"></span></div>
+            </div>
+
+            <div class="msg" id="msgBox">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span id="msgText"></span>
+            </div>
+
+            <div class="divider"><span>AUTHENTICATE VIA</span></div>
+
+            <button class="btn-google" id="googleBtn" onclick="startGoogleAuth()">
+                <svg class="g-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                CONTINUE WITH GOOGLE
+            </button>
+
+            <div class="features">
+                <div class="feat"><i class="fas fa-shield-alt"></i>SSO SECURED</div>
+                <div class="feat"><i class="fas fa-user-secret"></i>OPERATOR ISOLATED</div>
+                <div class="feat"><i class="fas fa-database"></i>PERSISTENT OPS</div>
+                <div class="feat"><i class="fas fa-lock"></i>JWT SESSIONS</div>
+            </div>
+        </div>
+        <div class="card-footer">AUTHORIZED ACCESS ONLY · SIMULATION ENVIRONMENT ONLY</div>
+    </div>
+
+    <script>
+        function tick() {
+            var n = new Date();
+            document.getElementById('clock').textContent =
+                String(n.getHours()).padStart(2,'0') + ':' +
+                String(n.getMinutes()).padStart(2,'0') + ':' +
+                String(n.getSeconds()).padStart(2,'0') + ' UTC';
+        }
+        setInterval(tick, 1000); tick();
+
+        // Handle ?error= params from failed OAuth redirect
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            var err = params.get('error');
+            var msgs = { state_mismatch: 'Security check failed — please try again.', oauth_failed: 'Google authentication failed — please try again.' };
+            if (err) {
+                showMsg('error', msgs[err] || 'Authentication error: ' + err);
+                history.replaceState({}, '', '/login');
+            }
+            // Already authenticated? Skip straight to app
+            if (sessionStorage.getItem('xpose_token')) window.location.href = '/';
+        })();
+
+        function showMsg(type, text) {
+            var box = document.getElementById('msgBox');
+            box.className = 'msg ' + type;
+            document.getElementById('msgText').textContent = text;
+        }
+
+        function startGoogleAuth() {
+            document.getElementById('googleBtn').disabled = true;
+            document.getElementById('loadingOverlay').classList.add('show');
+            window.location.href = '/api/auth/google';
+        }
+    </script>
+</body>
+</html>
