@@ -68,7 +68,7 @@ except ImportError:
     except ImportError:
         pass
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", static_url_path="")
 from datetime import timedelta
 app.secret_key = os.environ.get("SESSION_SECRET", os.urandom(32).hex())
 app.permanent_session_lifetime = timedelta(hours=12)
@@ -1561,7 +1561,7 @@ def index():
     guard = require_login()
     if guard:
         return guard
-    return render_template("index.html")
+    return app.send_static_file("index.html")
 
 @app.route("/api/health", methods=["GET"])
 def health():
