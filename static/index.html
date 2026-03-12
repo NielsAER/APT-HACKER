@@ -710,6 +710,10 @@
         async function loadProjects() {
             try {
                 var res = await fetch('/api/projects');
+                if (!res.ok) {
+                    throw new Error('API error: ' +  res.status);
+                    
+                }
                 var projects = await res.json();
                 var html = '';
 
