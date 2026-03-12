@@ -1619,12 +1619,18 @@ def create_project():
     impact_analysis = {}
     owner = session.get("username", "unknown")
     if project_type == "apt" and target:
-        osint_data = gather_comprehensive_osint(target)
-        industry = detect_industry(target, osint_data)
-        impact_analysis = calculate_impact_analysis(target, osint_data, industry)
-        db_execute("INSERT INTO osint_data (project_id, data_type, data) VALUES (%s, %s, %s)", (project_id, "comprehensive", json.dumps(osint_data)))
-    db_execute("INSERT INTO projects (id, name, type, target, framework, impact_analysis, owner) VALUES (%s, %s, %s, %s, %s, %s, %s)", (project_id, name, project_type, target, data.get("framework", ""), json.dumps(impact_analysis), owner))
-    return jsonify({"id": project_id, "name": name, "type": project_type, "target": target, "impact_analysis": impact_analysis})
+        try:
+            osint_data = gather_comprehensive_osint(target)
+            industry = detect_industry(target, osint_data)
+            impact_analysis = calculate_impact_analysis(target, osint_data, industry)
+            db_execute(
+                "INSERT INTO osint_data (project_id, data_type, data) VALUES (%s, %s, %s)",
+                (project_id, "comprehensive", json.dumps(osint_data))
+            )
+        except Exception as e:
+            print("OSINT error:", e)
+        db_execute("INSERT INTO projects (id, name, type, target, framework, impact_analysis, owner) VALUES (%s, %s, %s, %s, %s, %s, %s)", (project_id, name, project_type, target, data.get("framework", ""), json.dumps(impact_analysis), owner))
+        return jsonify({"id": project_id, "name": name, "type": project_type, "target": target, "impact_analysis": impact_analysis})
 
 @app.route("/api/projects/<project_id>", methods=["GET"])
 def get_project(project_id):
