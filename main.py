@@ -122,6 +122,7 @@ PENTEST_FRAMEWORKS = {
 _db_initialized = False
 
 def get_postgres_conn():
+    
     if PG_DRIVER == "psycopg2":
         url = DATABASE_URL.replace("postgres://", "postgresql://", 1) if DATABASE_URL.startswith("postgres://") else DATABASE_URL
         return psycopg2.connect(url, cursor_factory=RealDictCursor)
@@ -172,7 +173,8 @@ def init_db():
     if USE_POSTGRES:
         conn = get_postgres_conn()
         cursor = conn.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, target TEXT, framework TEXT, status TEXT DEFAULT \'active\', findings TEXT DEFAULT \'[]\', impact_analysis TEXT DEFAULT \'{}\', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL);')
+        cursor.execute('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, target TEXT, framework TEXT, status TEXT DEFAULT \'active\', findings TEXT DEFAULT \'[]\', impact_analysis TEXT DEFAULT \'{}\', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,owner TEXT ,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         cursor.execute('CREATE TABLE IF NOT EXISTS messages (id SERIAL PRIMARY KEY, project_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, phase TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         cursor.execute('CREATE TABLE IF NOT EXISTS osint_data (id SERIAL PRIMARY KEY, project_id TEXT NOT NULL, data_type TEXT NOT NULL, data TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         conn.commit()
@@ -1540,15 +1542,16 @@ def hash_password(password):
 def create_user(username, password):
     user_id = str(uuid.uuid4())
     try:
-        db_execute("INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)",
-            (user_id, username.strip().lower(), hash_password(password)))
+        db_execute("INSERT INTO users (username, password_hash) VALUES ( %s, %s)",
+            ( username.strip().lower(), hash_password(password)))
         return True
-    except Exception:
-        return False  # username already exists
+    except Exception as e:
+        print("Create user error:", e)
+        return False
 
 def verify_user(username, password):
     user = db_execute(
-        "SELECT * FROM users WHERE username = ? AND password_hash = ?",
+        "SELECT * FROM users WHERE username = %s AND password_hash = %s",
         (username.strip().lower(), hash_password(password)),
         fetchone=True
     )
