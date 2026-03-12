@@ -1645,7 +1645,8 @@ def create_project():
             "name": name,
             "type": project_type,
             "target": target,
-            "impact_analysis": impact_analysis
+            "impact_analysis": impact_analysis,
+            "owner": owner
         })
 
     except Exception as e:
