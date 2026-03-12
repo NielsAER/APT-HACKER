@@ -1663,13 +1663,13 @@ def get_project(project_id):
 @app.route("/api/projects/<project_id>", methods=["DELETE"])
 def delete_project(project_id):
     owner = session.get("username", "unknown")
-    db_execute("DELETE FROM projects WHERE id = ? AND owner = ?", (project_id, owner))
+    db_execute("DELETE FROM projects WHERE id = %s AND owner = %s", (project_id, owner))
     return jsonify({"success": True})
 
 @app.route("/api/projects/<project_id>/osint", methods=["GET"])
 def get_project_osint(project_id):
     owner = session.get("username", "unknown")
-    osint = db_execute("SELECT * FROM osint_data WHERE project_id = ? AND project_id IN (SELECT id FROM projects WHERE owner = ?) ORDER BY created_at DESC LIMIT 1", (project_id, owner), fetchone=True)
+    osint = db_execute("SELECT * FROM osint_data WHERE project_id = %s AND project_id IN (SELECT id FROM projects WHERE owner = %s) ORDER BY created_at DESC LIMIT 1", (project_id, owner), fetchone=True)
     if osint:
         try: osint["data"] = json.loads(osint.get("data", "{}"))
         except: pass
@@ -1684,14 +1684,14 @@ def refresh_osint(project_id):
     osint_data = gather_comprehensive_osint(target)
     industry = detect_industry(target, osint_data)
     impact_analysis = calculate_impact_analysis(target, osint_data, industry)
-    db_execute("INSERT INTO osint_data (project_id, data_type, data) VALUES (?, ?, ?)", (project_id, "comprehensive", json.dumps(osint_data)))
-    db_execute("UPDATE projects SET impact_analysis = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (json.dumps(impact_analysis), project_id))
+    db_execute("INSERT INTO osint_data (project_id, data_type, data) VALUES (%s, %s, %s)", (project_id, "comprehensive", json.dumps(osint_data)))
+    db_execute("UPDATE projects SET impact_analysis = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s", (json.dumps(impact_analysis), project_id))
     return jsonify({"osint": osint_data, "impact_analysis": impact_analysis})
 
 @app.route("/api/projects/<project_id>/messages", methods=["GET"])
 def get_messages(project_id):
     owner = session.get("username", "unknown")
-    return jsonify(db_execute("SELECT * FROM messages WHERE project_id = ? AND project_id IN (SELECT id FROM projects WHERE owner = ?) ORDER BY created_at ASC", (project_id, owner), fetchall=True))
+    return jsonify(db_execute("SELECT * FROM messages WHERE project_id = %s AND project_id IN (SELECT id FROM projects WHERE owner = %s) ORDER BY created_at ASC", (project_id, owner), fetchall=True))
 
 @app.route("/api/projects/<project_id>/upload", methods=["POST"])
 def upload_file(project_id):
@@ -2350,8 +2350,8 @@ def chat(project_id):
         if not project: 
             return jsonify({"error": "Project not found"}), 404
         
-        history = db_execute("SELECT role, content FROM messages WHERE project_id = ? ORDER BY created_at ASC", (project_id,), fetchall=True)
-        osint_record = db_execute("SELECT data FROM osint_data WHERE project_id = ? ORDER BY created_at DESC LIMIT 1", (project_id,), fetchone=True)
+        history = db_execute("SELECT role, content FROM messages WHERE project_id = %s ORDER BY created_at ASC", (project_id,), fetchall=True)
+        osint_record = db_execute("SELECT data FROM osint_data WHERE project_id = %s ORDER BY created_at DESC LIMIT 1", (project_id,), fetchone=True)
         osint_data = json.loads(osint_record.get("data", "{}")) if osint_record else {}
         impact_analysis = json.loads(project.get("impact_analysis", "{}")) if project.get("impact_analysis") else {}
         knowledge = load_knowledge()
@@ -2408,7 +2408,7 @@ def chat(project_id):
             db_message = user_message
         
         # Save user message before streaming
-        db_execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project_id, "user", db_message))
+        db_execute("INSERT INTO messages (project_id, role, content) VALUES (%s, %s, %s)", (project_id, "user", db_message))
         
         if USE_STREAMING:
             db_path = DATABASE
@@ -2427,8 +2427,8 @@ def chat(project_id):
                         import sqlite3
                         conn = sqlite3.connect(db_path)
                         cursor = conn.cursor()
-                        cursor.execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project_id, "assistant", response_text))
-                        cursor.execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (project_id,))
+                        cursor.execute("INSERT INTO messages (project_id, role, content) VALUES (%s, %s, %s)", (project_id, "assistant", response_text))
+                        cursor.execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = %s", (project_id,))
                         conn.commit()
                         conn.close()
                     except Exception as db_err:
@@ -2439,8 +2439,8 @@ def chat(project_id):
             return Response(generate(), mimetype='text/event-stream')
         else:
             response = call_llm_sync(messages)
-            db_execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project_id, "assistant", response))
-            db_execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (project_id,))
+            db_execute("INSERT INTO messages (project_id, role, content) VALUES (%s, %s, %s)", (project_id, "assistant", response))
+            db_execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = %s", (project_id,))
             return jsonify({"response": response})
             
     except Exception as e:
@@ -3245,8 +3245,8 @@ def handle_telegram_message(message):
             osint_data = gather_comprehensive_osint(target)
             industry = detect_industry(target, osint_data)
             impact_analysis = calculate_impact_analysis(target, osint_data, industry)
-            db_execute("INSERT INTO projects (id, name, type, target, impact_analysis) VALUES (?, ?, ?, ?, ?)", (project_id, f"TG-{target[:20]}", "apt", target, json.dumps(impact_analysis)))
-            db_execute("INSERT INTO osint_data (project_id, data_type, data) VALUES (?, ?, ?)", (project_id, "comprehensive", json.dumps(osint_data)))
+            db_execute("INSERT INTO projects (id, name, type, target, impact_analysis) VALUES (%s, %s, %s, %s, %s)", (project_id, f"TG-{target[:20]}", "apt", target, json.dumps(impact_analysis)))
+            db_execute("INSERT INTO osint_data (project_id, data_type, data) VALUES (%s, %s, %s)", (project_id, "comprehensive", json.dumps(osint_data)))
             p = impact_analysis.get("probabilities", {})
             telegram_send_message(chat_id, f"[OK] **APT Created**\n\n[TARGET] Target: {target}\n[Industry] Industry: {impact_analysis.get('industry')}\n[Stats] Attack Surface: {impact_analysis.get('attack_surface_score')}/10\n\n**Probabilities:**\n* Initial Access: {p.get('initial_access')}%\n* Domain Admin: {p.get('domain_admin')}%\n* Ransomware: {p.get('ransomware_deployment')}%\n\nProject: `{project_id}`")
         return
@@ -3261,14 +3261,14 @@ def handle_telegram_message(message):
             telegram_send_message(chat_id, f"[Stats] **{target}**\n\n**OSINT:**\n* Subdomains: {o.get('subdomains_found')}\n* Services: {o.get('open_services')}\n* Leaked: {o.get('leaked_credentials')}\n* Emails: {o.get('emails_harvested')}\n\n**Risk:**\n* Initial Access: {p.get('initial_access')}%\n* Domain Admin: {p.get('domain_admin')}%")
         return
     
-    project = db_execute("SELECT * FROM projects WHERE name LIKE ? ORDER BY updated_at DESC LIMIT 1", ("TG-%",), fetchone=True)
+    project = db_execute("SELECT * FROM projects WHERE name LIKE %s ORDER BY updated_at DESC LIMIT 1", ("TG-%",), fetchone=True)
     if not project:
         telegram_send_message(chat_id, "Use /newapt <company> to start!", parse_mode=None)
         return
     
     try:
-        history = db_execute("SELECT role, content FROM messages WHERE project_id = ? ORDER BY created_at ASC", (project["id"],), fetchall=True)
-        osint_record = db_execute("SELECT data FROM osint_data WHERE project_id = ? ORDER BY created_at DESC LIMIT 1", (project["id"],), fetchone=True)
+        history = db_execute("SELECT role, content FROM messages WHERE project_id = %s ORDER BY created_at ASC", (project["id"],), fetchall=True)
+        osint_record = db_execute("SELECT data FROM osint_data WHERE project_id = %s ORDER BY created_at DESC LIMIT 1", (project["id"],), fetchone=True)
         osint_data = json.loads(osint_record.get("data", "{}")) if osint_record else {}
         impact_analysis = json.loads(project.get("impact_analysis", "{}")) if project.get("impact_analysis") else {}
         
@@ -3277,9 +3277,9 @@ def handle_telegram_message(message):
         for h in history[-20:]: messages.append({"role": h["role"], "content": h["content"]})
         messages.append({"role": "user", "content": text})
         
-        db_execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project["id"], "user", text))
+        db_execute("INSERT INTO messages (project_id, role, content) VALUES (%s, %s, %s)", (project["id"], "user", text))
         response = call_llm_sync(messages, max_tokens=4000)
-        db_execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project["id"], "assistant", response))
+        db_execute("INSERT INTO messages (project_id, role, content) VALUES (%s, %s, %s)", (project["id"], "assistant", response))
         
         for i in range(0, len(response), 4000):
             telegram_send_message(chat_id, response[i:i+4000], parse_mode=None)
