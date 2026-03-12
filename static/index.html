@@ -1310,7 +1310,9 @@
                 document.getElementById('targetInput').value = '';
                 document.getElementById('projectNameInput').value = '';
                 await loadProjects();
-                await selectProject(data.id);
+                if (data && data.id) {
+                    await selectProject(data.id);
+                }
             } catch (e) {
                 alert('Error: ' + e.message);
             }
