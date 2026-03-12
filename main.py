@@ -1604,10 +1604,16 @@ def health():
 
 @app.route("/api/projects", methods=["GET"])
 def list_projects():
-    owner = session.get("username", "unknown")
-    return jsonify(db_execute(
-        "SELECT * FROM projects WHERE owner = ? ORDER BY updated_at DESC",
-        (owner,), fetchall=True))
+    try:
+        owner = session.get("username", "unknown")
+        rows = db_execute(
+            "SELECT * FROM projects WHERE owner = %s ORDER BY updated_at DESC",
+            (owner,), fetchall=True
+        )
+        return jsonify([dict(r) for r in rows])
+    except Exception as e:
+        print("LIST PROJECTS ERROR:", e)
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/projects", methods=["POST"])
 def create_project():
