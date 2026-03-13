@@ -145,7 +145,7 @@ def db_execute(query, params=(), fetchone=False, fetchall=False):
     db = get_db()
     try:
         if USE_POSTGRES:
-            query = query.replace("?", "?")
+            query = query.replace("?", "%s")
         cursor = db.cursor()
         cursor.execute(query, params)
         if fetchone:
@@ -174,14 +174,14 @@ def init_db():
         conn = get_postgres_conn()
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL);')
-        cursor.execute('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, target TEXT, framework TEXT, status TEXT DEFAULT \'active\', findings TEXT DEFAULT \'[]\', impact_analysis TEXT DEFAULT \'{}\', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,owner TEXT DEFAULT "unknown",updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, target TEXT, framework TEXT, status TEXT DEFAULT \'active\', findings TEXT DEFAULT \'[]\', impact_analysis TEXT DEFAULT \'{}\', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,owner TEXT DEFAULT \'unknown\',updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         cursor.execute('CREATE TABLE IF NOT EXISTS messages (id SERIAL PRIMARY KEY, project_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, phase TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         cursor.execute('CREATE TABLE IF NOT EXISTS osint_data (id SERIAL PRIMARY KEY, project_id TEXT NOT NULL, data_type TEXT NOT NULL, data TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         conn.commit()
         conn.close()
     else:
         conn = get_sqlite_conn()
-        conn.executescript('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, target TEXT, framework TEXT, status TEXT DEFAULT \'active\', findings TEXT DEFAULT \'[]\', impact_analysis TEXT DEFAULT \'{}\', owner TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, phase TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS osint_data (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, data_type TEXT NOT NULL, data TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL);')
+        conn.executescript('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, target TEXT, framework TEXT, status TEXT DEFAULT \'active\', findings TEXT DEFAULT \'[]\', impact_analysis TEXT DEFAULT \'{}\', owner TEXT DEFAULT \'unknown\', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, phase TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS osint_data (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, data_type TEXT NOT NULL, data TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL);')
         conn.commit()
         conn.close()
     _db_initialized = True
