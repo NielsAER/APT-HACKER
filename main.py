@@ -32,7 +32,7 @@ import sqlite3
 from pathlib import Path
 env_file = Path(__file__).parent / ".env"
 if env_file.exists():
-    with open(env_file, encoding='utf-16') as f:
+    with open(env_file, encoding='utf-8-sig') as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith('#') and '=' in line:
@@ -99,7 +99,7 @@ DATABASE = "xpose_v7.db"
 DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or os.environ.get("NEON_DATABASE_URL")
 USE_POSTGRES = bool(DATABASE_URL and HAS_POSTGRES)
 IS_VERCEL = bool(os.environ.get("VERCEL"))
-USE_STREAMING = os.environ.get("USE_STREAMING", "true" if not IS_VERCEL else "false").lower() == "true"
+USE_STREAMING = os.environ.get("USE_STREAMING", "true").lower() == "true"  # Streaming works on Vercel via SSE
 
 # Industry profiles for impact analysis
 INDUSTRY_PROFILES = {
@@ -211,17 +211,6 @@ def gather_comprehensive_osint(target):
     domain = domain_match.group(1) if domain_match else target
     results["metadata"]["domain"] = domain
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {
-            executor.submit(fetch_shodan, domain): "shodan",
-            executor.submit(fetch_dehashed, domain): "dehashed",
-            executor.submit(fetch_hunter, domain): "hunter",
-            executor.submit(fetch_crtsh, domain): "crtsh",
-        }
-        for future in as_completed(futures):
-            key = futures[future]
-            results[key] = future.result()
-    
     # Shodan
     if SHODAN_API_KEY:
         results["metadata"]["sources_queried"].append("shodan")
@@ -1475,7 +1464,9 @@ Guide the operator through systematic testing with professional depth.
 '''
 
 # LLM Functions
-def call_llm_streaming(messages, max_tokens=16000):
+def call_llm_streaming(messages, max_tokens=None):
+    if max_tokens is None:
+        max_tokens = 6000 if IS_VERCEL else 16000
     if not LLM_API_KEY:
         raise Exception("LLM API key not configured. Add LLM_API_KEY to .env file")
     
