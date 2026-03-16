@@ -1085,31 +1085,38 @@
         //     if (bar) bar.style.width = value + '%';
         //     if (percent) percent.innerText = value;
         // }
+        // ─── FIX 1: Add id="sendButton" to your HTML button ───────────────────────
+// Change this in your HTML:
+//   <button onclick="sendMessage()" class="px-6 py-3 bg-red-600 ...">
+// To:
+//   <button id="sendButton" onclick="sendMessage()" class="px-6 py-3 bg-red-600 ...">
+
+
+// ─── FIX 2: Full corrected sendMessage function ────────────────────────────
         async function sendMessage() {
             if (isStreaming) return;
             if (!currentProject) {
                 alert('Create an operation first');
                 return;
             }
-            
+
             var textarea = document.getElementById('messageInput');
             var message = textarea.value.trim();
             var imageData = null;
             var imageMime = null;
             var userScrolledUp = false;
-            
+
             // Handle file upload
             if (selectedFile) {
                 var ext = selectedFile.name.split('.').pop().toLowerCase();
                 var isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext);
-                
+
                 if (isImage) {
-                    // Read image as base64 and send directly to chat
                     var reader = new FileReader();
                     var imagePromise = new Promise(function(resolve) {
                         reader.onload = function(e) {
                             var base64 = e.target.result.split(',')[1];
-                            var mimeMap = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif', 'webp': 'image/webp', 'bmp': 'image/bmp'};
+                            var mimeMap = { 'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif', 'webp': 'image/webp', 'bmp': 'image/bmp' };
                             resolve({ base64: base64, mime: mimeMap[ext] || 'image/png' });
                         };
                         reader.readAsDataURL(selectedFile);
@@ -1119,10 +1126,8 @@
                     imageMime = imgResult.mime;
                     if (!message) message = "Please analyze this image for security-relevant information.";
                 } else {
-                    // Non-image file - upload and get analysis prompt
                     var formData = new FormData();
                     formData.append('file', selectedFile);
-                    
                     try {
                         var uploadRes = await fetch('/api/projects/' + currentProject.id + '/upload', {
                             method: 'POST',
@@ -1138,57 +1143,45 @@
                 }
                 clearFile();
             }
-            
+
             if (!message && !imageData) return;
-            
+
+            // Clear input immediately BEFORE anything else
             textarea.value = '';
             textarea.style.height = 'auto';
-            
+
             var container = document.getElementById('chatMessages');
-            
-            // Track if user is near bottom for auto-scroll
             var isNearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
-            
-            // Show user message with image indicator if applicable
-            var displayMessage = imageData ? '[📷 Image attached]\n' + message : message;
+
+            // Show user message
+            var displayMessage = imageData ? '[Image attached]\n' + message : message;
             container.innerHTML += formatMessage({ role: 'user', content: displayMessage });
-            container.innerHTML += 
-            container.innerHTML += 
-            '<div id="loading" class="flex justify-start my-2">' +
-                '<div class="flex flex-col gap-1 px-1 py-2">' +
-                    '<div class="flex items-center gap-3">' +
-                        '<span id="spinnerChar" class="text-green-400 font-mono text-sm w-4 inline-block">⠋</span>' +
-                        '<span id="spinnerText" class="text-gray-400 font-mono text-sm">Thinking...</span>' +
-                        '<button onclick="stopGeneration()" class="ml-2 px-2 py-0.5 text-xs font-mono text-red-400 border border-red-800 rounded hover:bg-red-900/30 transition-colors">✕ stop</button>' +
+
+            // FIX: single innerHTML += for loading spinner (was duplicated before)
+            container.innerHTML +=
+                '<div id="loading" class="flex justify-start my-2">' +
+                    '<div class="flex flex-col gap-1 px-1 py-2">' +
+                        '<div class="flex items-center gap-3">' +
+                            '<span id="spinnerChar" class="text-green-400 font-mono text-sm w-4 inline-block">⠋</span>' +
+                            '<span id="spinnerText" class="text-gray-400 font-mono text-sm">Thinking...</span>' +
+                            '<button onclick="stopGeneration()" class="ml-2 px-2 py-0.5 text-xs font-mono text-red-400 border border-red-800 rounded hover:bg-red-900/30 transition-colors">✕ stop</button>' +
+                        '</div>' +
+                        '<div id="spinnerStatus" class="text-xs font-mono text-gray-600 pl-7 h-4 transition-all duration-150"></div>' +
                     '</div>' +
-                    '<div id="spinnerStatus" class="text-xs font-mono text-gray-600 pl-7 h-4 transition-all duration-150"></div>' +
-                '</div>' +
-            '</div>';
+                '</div>';
+
             startSpinner();
-            // '<div id="loading" class="flex justify-start">' +
-            //     '<div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 w-full max-w-md">' +
-            //         '<div class="flex items-center gap-3">' +
-            //             '<i class="fas fa-skull text-red-500 text-xl animate-pulse"></i>' +
-            //             '<div class="flex-1">' +
-            //                 '<div class="text-sm text-red-400 font-semibold">Executing Operation...</div>' +
-            //                 '<div class="w-full bg-gray-700 rounded-full h-2 mt-2 overflow-hidden">' +
-            //                     '<div id="progressBar" class="bg-red-500 h-2 transition-all duration-300" style="width:0%"></div>' +
-            //                 '</div>' +
-            //                 '<div class="text-xs text-gray-400 mt-1"><span id="progressPercent">0</span>%</div>' +
-            //             '</div>' +
-            //         '</div>' +
-            //     '</div>' +
-            // '</div>';
 
             if (isNearBottom) container.scrollTop = container.scrollHeight;
-            
+
+            // FIX: wrap everything in try/finally so UI always resets
             try {
                 var requestBody = { message: message };
                 if (imageData) {
                     requestBody.image = imageData;
                     requestBody.image_mime = imageMime;
                 }
-                
+
                 currentAbortController = new AbortController();
                 setGeneratingState();
 
@@ -1198,99 +1191,125 @@
                     body: JSON.stringify(requestBody),
                     signal: currentAbortController.signal
                 });
-                
 
-                
-                if (res.headers.get('content-type') && res.headers.get('content-type').includes('event-stream')) {
+                var contentType = res.headers.get('content-type') || '';
+
+                if (contentType.includes('event-stream')) {
                     var reader = res.body.getReader();
                     var decoder = new TextDecoder();
                     var fullContent = '';
                     var streamId = 'stream-' + Date.now();
+                    var buffer = '';
+
                     var responseDiv = document.createElement('div');
                     responseDiv.className = 'flex justify-start';
-                    responseDiv.innerHTML = '<div class="max-w-4xl w-full bg-gray-800/50 border border-gray-700 rounded-lg p-4">' +
-                        '<div class="text-xs text-green-400 mb-2 font-semibold"><i class="fas fa-robot mr-1"></i>APT AI</div>' +
-                        '<div class="prose prose-sm max-w-none" id="' + streamId + '"></div></div>';
+                    responseDiv.innerHTML =
+                        '<div class="max-w-4xl w-full bg-gray-800/50 border border-gray-700 rounded-lg p-4">' +
+                            '<div class="text-xs text-green-400 mb-2 font-semibold"><i class="fas fa-robot mr-1"></i>APT AI</div>' +
+                            '<div class="prose prose-sm max-w-none" id="' + streamId + '"></div>' +
+                        '</div>';
                     container.appendChild(responseDiv);
-                    
-                    
+
                     var scrollHandler = function() {
-                        var nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
-                        userScrolledUp = !nearBottom;
+                        userScrolledUp = (container.scrollHeight - container.scrollTop - container.clientHeight) > 100;
                     };
                     container.addEventListener('scroll', scrollHandler);
-                    
-                    while (true) {
-                        var result;
-                    try {
-                        result = await reader.read();
-                    } catch (err) {
-                        if (err.name === 'AbortError') break;
-                        throw err;
-                    }
-                    if (result.done) break;
-                        var chunk = decoder.decode(result.value);
-                        var lines = chunk.split('\n');
-                        for (var i = 0; i < lines.length; i++) {
-                            if (lines[i].startsWith('data: ')) {
-                                try {
-                                    var data = JSON.parse(lines[i].slice(6));
-                                    if (data.content) {
-                                        fullContent += data.content;
-                                        var status = classifyChunk(data.content, fullContent);
-                                        
-                                            var statusEl = document.getElementById('spinnerStatus');
-                                            if (statusEl) statusEl.textContent = '↳ ' + status;
-                                        
-                                        var el = document.getElementById(streamId);
-                                        if (el) {
-                                            try { el.innerHTML = marked.parse(fullContent); }
-                                            catch(e) { el.innerHTML = fullContent.replace(/\n/g, '<br>'); }
-                                        }
-                                        // Only auto-scroll if user hasn't scrolled up
-                                        if (!userScrolledUp) {
-                                            container.scrollTop = container.scrollHeight;
-                                        }
-                                    }
-                                    
-                                    if (data.done) {                                       
-                                        resetGeneratingState();
-                                    }
-                                    if (data.error) {
-                                        container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>' + data.error + '</div>';
-                                    }
-                                } catch (e) {
-                                    var loadingEl = document.getElementById('loading');
-                                    if (loadingEl) loadingEl.remove();
 
-                                    if (e.name === 'AbortError') {
-                                        container.innerHTML += 
-                                            '<div class="p-4 bg-yellow-900/30 border border-yellow-800 rounded-lg text-yellow-400">' +
-                                            '<i class="fas fa-stop mr-2"></i>Generation stopped.' +
-                                            '</div>'; resetGeneratingState();
-                                    } 
+                    var streamDone = false;
+
+                    while (!streamDone) {
+                        var result;
+                        try {
+                            result = await reader.read();
+                        } catch (err) {
+                            if (err.name === 'AbortError') break;
+                            throw err;
+                        }
+
+                        if (result.done) break;
+
+                        // FIX: buffer incomplete lines so no partial JSON gets parsed
+                        buffer += decoder.decode(result.value, { stream: true });
+                        var lines = buffer.split('\n');
+                        buffer = lines.pop(); // keep incomplete last line
+
+                        for (var i = 0; i < lines.length; i++) {
+                            var line = lines[i].trim();
+                            if (!line.startsWith('data: ')) continue;
+
+                            var raw = line.slice(6);
+                            if (raw === '[DONE]') { streamDone = true; break; }
+
+                            try {
+                                var data = JSON.parse(raw);
+
+                                if (data.content) {
+                                    fullContent += data.content;
+
+                                    var status = classifyChunk(data.content, fullContent);
+                                    if (status) {
+                                        var statusEl = document.getElementById('spinnerStatus');
+                                        if (statusEl) statusEl.textContent = '↳ ' + status;
+                                    }
+
+                                    var el = document.getElementById(streamId);
+                                    if (el) {
+                                        try { el.innerHTML = marked.parse(fullContent); }
+                                        catch (e) { el.innerHTML = fullContent.replace(/\n/g, '<br>'); }
+                                    }
+
+                                    if (!userScrolledUp) container.scrollTop = container.scrollHeight;
                                 }
+
+                                // FIX: done signal stops the loop and cleans up
+                                if (data.done) {
+                                    streamDone = true;
+                                    break;
+                                }
+
+                                if (data.error) {
+                                    container.innerHTML +=
+                                        '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400">' +
+                                        '<i class="fas fa-exclamation-triangle mr-2"></i>' + data.error + '</div>';
+                                    streamDone = true;
+                                    break;
+                                }
+
+                            } catch (parseErr) {
+                                // Ignore malformed JSON lines (can happen at stream boundaries)
                             }
                         }
                     }
-                    // Remove scroll listener after streaming done
+
                     container.removeEventListener('scroll', scrollHandler);
                     processCodeBlocks();
+
                 } else {
+                    // Non-streaming fallback
                     var data = await res.json();
                     if (data.response) {
                         container.innerHTML += formatMessage({ role: 'assistant', content: data.response });
                         processCodeBlocks();
                     } else if (data.error) {
-                        container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>' + data.error + '</div>';
+                        container.innerHTML +=
+                            '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400">' +
+                            '<i class="fas fa-exclamation-triangle mr-2"></i>' + data.error + '</div>';
                     }
                 }
-                // Scroll to bottom only if user was already near bottom
+
                 if (!userScrolledUp) container.scrollTop = container.scrollHeight;
+
             } catch (e) {
-                var loadingEl = document.getElementById('loading');
-                if (loadingEl) loadingEl.remove();
-                container.innerHTML += '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400"><i class="fas fa-exclamation-triangle mr-2"></i>Connection Error: ' + e.message + '</div>';
+                if (e.name !== 'AbortError') {
+                    container.innerHTML +=
+                        '<div class="p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400">' +
+                        '<i class="fas fa-exclamation-triangle mr-2"></i>Connection Error: ' + e.message + '</div>';
+                }
+            } finally {
+                // FIX: always runs — guaranteed cleanup no matter what happened
+                stopSpinner();
+                resetGeneratingState();
+                currentAbortController = null;
             }
         }
         
