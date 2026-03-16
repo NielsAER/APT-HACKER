@@ -43,6 +43,7 @@ import uuid
 import random
 import smtplib
 import ssl
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -209,6 +210,17 @@ def gather_comprehensive_osint(target):
     domain_match = re.search(r'(?:https?://)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,})', target)
     domain = domain_match.group(1) if domain_match else target
     results["metadata"]["domain"] = domain
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(fetch_shodan, domain): "shodan",
+            executor.submit(fetch_dehashed, domain): "dehashed",
+            executor.submit(fetch_hunter, domain): "hunter",
+            executor.submit(fetch_crtsh, domain): "crtsh",
+        }
+        for future in as_completed(futures):
+            key = futures[future]
+            results[key] = future.result()
     
     # Shodan
     if SHODAN_API_KEY:
@@ -860,8 +872,13 @@ Target: {impact.get('target')} | Industry: {impact.get('industry')} | Attack Sur
 - Ransomware Demand: EUR{b.get('ransomware_demand_min')}M - EUR{b.get('ransomware_demand_max')}M
 - Business Impact: EUR{b.get('business_impact_min')}M - EUR{b.get('business_impact_max')}M
 """
-
+_knowledge_cache = None
 def load_knowledge():
+    global _knowledge_cache
+    if _knowledge_cache is not None:
+        return _knowledge_cache
+
+    
     if not KNOWLEDGE_PATH.exists(): return "Knowledge base not available."
     knowledge_sections = []
     
@@ -893,7 +910,8 @@ def load_knowledge():
         try: knowledge_sections.append(f"\n### {f.stem}\n{f.read_text()[:8000]}")
         except: pass
     
-    return "\n".join(knowledge_sections)[:100000]  # Increased limit
+    _knowledge_cache = "\n".join(knowledge_sections)[:100000]  # Increased limit
+    return _knowledge_cache
 
 APT_SYSTEM_PROMPT = '''# XPOSE APT AI v8.0 - NATION-STATE ATTACK ENGINE
 ## "From Target Name to Full Domain Compromise - Every Command Verified"
