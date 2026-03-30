@@ -2153,7 +2153,6 @@ def chat(project_id):
         db_execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project_id, "user", db_message))
         
         if USE_STREAMING:
-            db_path = DATABASE
             
             def generate():
                 full_response = []
@@ -2164,17 +2163,7 @@ def chat(project_id):
                         total_chars += len(chunk)
                         estimated_progress = min(95, int((total_chars / (16000*4))* 100) )  # Rough progress estimation
                         yield f"data: {json.dumps({'content': chunk, 'progress': estimated_progress})}\n\n"
-                    response_text = "".join(full_response)
-                    try:
-                        import sqlite3
-                        conn = sqlite3.connect(db_path)
-                        cursor = conn.cursor()
-                        cursor.execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)", (project_id, "assistant", response_text))
-                        cursor.execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (project_id,))
-                        conn.commit()
-                        conn.close()
-                    except Exception as db_err:
-                        print(f"DB save error: {db_err}")
+                    # Save is now handled by frontend via /messages/save endpoint
                     yield f"data: {json.dumps({'done': True})}\n\n"
                 except Exception as e: 
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -2189,6 +2178,26 @@ def chat(project_id):
         import traceback
         print(f"Chat endpoint error: {traceback.format_exc()}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+@app.route("/api/projects/<project_id>/messages/save", methods=["POST"])
+def save_message(project_id):
+    """Reliable save endpoint — called by frontend after streaming completes"""
+    try:
+        project = get_user_project(project_id)
+        if not project:
+            return jsonify({"error": "Project not found"}), 404
+        data = request.json
+        if not data or not data.get("content"):
+            return jsonify({"error": "Content required"}), 400
+        role = data.get("role", "assistant")
+        if role not in ("assistant", "user"):
+            return jsonify({"error": "Invalid role"}), 400
+        db_execute("INSERT INTO messages (project_id, role, content) VALUES (?, ?, ?)",
+                   (project_id, role, data["content"]))
+        db_execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (project_id,))
+        return jsonify({"status": "saved"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/osint/quick", methods=["POST"])
 def quick_osint():

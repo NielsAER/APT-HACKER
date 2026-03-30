@@ -322,7 +322,13 @@
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             checkHealth();
-            loadProjects();
+            loadProjects().then(function() {
+                // Auto-restore last active project on page load / refresh
+                try {
+                    var lastId = localStorage.getItem('xpose_lastProject');
+                    if (lastId) selectProject(lastId);
+                } catch(e) {}
+            });
             setupTextarea();
             setupFileInput();
             
@@ -773,6 +779,7 @@
                 // If deleted project was active, reset it
                 if (currentProject && currentProject.id === id) {
                     currentProject = null;
+                    try { localStorage.removeItem('xpose_lastProject'); } catch(e) {}
                 }
 
                 loadProjects();
@@ -786,7 +793,12 @@
         async function selectProject(id) {
             try {
                 var res = await fetch('/api/projects/' + id);
+                if (!res.ok) throw new Error('Project not found');
                 currentProject = await res.json();
+                
+                // Persist active project so it survives page refresh
+                try { localStorage.setItem('xpose_lastProject', id); } catch(e) {}
+                
                 document.getElementById('projectTitle').innerHTML = '<i class="fas fa-crosshairs text-red-500 mr-2"></i>' + currentProject.name + ' <span class="text-gray-500 text-sm ml-2">' + currentProject.target + '</span>';
                 document.getElementById('refreshBtn').classList.remove('hidden');
                 
@@ -849,6 +861,8 @@
                 loadProjects();
             } catch (e) {
                 console.error('Select project error:', e);
+                // Clear stale reference if project no longer exists
+                try { localStorage.removeItem('xpose_lastProject'); } catch(ex) {}
             }
         }
         
@@ -1283,6 +1297,19 @@
 
                     container.removeEventListener('scroll', scrollHandler);
                     processCodeBlocks();
+
+                    // Reliably save assistant response to DB after stream completes
+                    if (fullContent) {
+                        try {
+                            await fetch('/api/projects/' + currentProject.id + '/messages/save', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ role: 'assistant', content: fullContent })
+                            });
+                        } catch (saveErr) {
+                            console.error('Failed to save assistant message:', saveErr);
+                        }
+                    }
 
                 } else {
                     // Non-streaming fallback
