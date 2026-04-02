@@ -662,33 +662,38 @@
         }
         
         function updateTechTab(tech) {
+            // techStack div replaced by deep scanner UI — use techScanResults instead
+            var container = document.getElementById('techScanResults');
+            if (!container) return;
             var detected = tech.detected || {};
             var html = '';
-            
             var categories = {
-                'cloud_providers': { icon: 'fa-cloud', color: 'blue' },
-                'email_services': { icon: 'fa-envelope', color: 'purple' },
-                'crm_erp': { icon: 'fa-database', color: 'green' },
-                'security': { icon: 'fa-shield-alt', color: 'red' },
-                'collaboration': { icon: 'fa-users', color: 'yellow' },
-                'development': { icon: 'fa-code', color: 'cyan' }
+                'cloud_providers': { icon: 'fa-cloud',      color: 'blue'   },
+                'email_services':  { icon: 'fa-envelope',   color: 'purple' },
+                'crm_erp':         { icon: 'fa-database',   color: 'green'  },
+                'security':        { icon: 'fa-shield-alt', color: 'red'    },
+                'collaboration':   { icon: 'fa-users',      color: 'yellow' },
+                'development':     { icon: 'fa-code',       color: 'cyan'   }
             };
-            
+            var hasAny = false;
+            html += '<div class="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3 mb-2">';
+            html += '<div class="text-xs text-gray-500 mb-2 font-semibold"><i class="fas fa-sitemap mr-1"></i>PASSIVE TECH (from OSINT subdomains)</div>';
+            html += '<div class="grid grid-cols-2 gap-2">';
             for (var cat in detected) {
                 var items = detected[cat];
                 if (items && items.length > 0) {
+                    hasAny = true;
                     var catInfo = categories[cat] || { icon: 'fa-cog', color: 'gray' };
-                    html += '<div class="bg-gray-900 p-3 rounded">' +
-                        '<div class="text-xs text-' + catInfo.color + '-400 mb-2"><i class="fas ' + catInfo.icon + ' mr-1"></i>' + cat.replace(/_/g, ' ').toUpperCase() + '</div>' +
-                        '<div class="space-y-1">';
-                    items.forEach(function(item) {
-                        html += '<div class="text-sm text-gray-300">' + item.replace(/_/g, ' ') + '</div>';
-                    });
-                    html += '</div></div>';
+                    html += '<div class="bg-gray-900 p-2 rounded"><div class="text-xs text-' + catInfo.color + '-400 mb-1"><i class="fas ' + catInfo.icon + ' mr-1"></i>' + cat.replace(/_/g, ' ').toUpperCase() + '</div>';
+                    items.forEach(function(item) { html += '<div class="text-xs text-gray-300">\u25b8 ' + item.replace(/_/g, ' ') + '</div>'; });
+                    html += '</div>';
                 }
             }
-            
-            document.getElementById('techStack').innerHTML = html || '<p class="text-gray-500 col-span-3">No technologies detected</p>';
+            html += '</div>';
+            if (!hasAny) html += '<p class="text-xs text-gray-500">No tech detected via subdomains. Run Deep Scan for full fingerprinting.</p>';
+            html += '<div class="mt-2 text-xs text-gray-600">Subdomain-based only \u2014 use <strong class="text-cyan-500">Deep Scan</strong> for HTTP/DNS/SSL fingerprinting.</div>';
+            html += '</div>';
+            container.innerHTML = html;
         }
 
         // ── Deep Tech Scanner ─────────────────────────────────────────────
