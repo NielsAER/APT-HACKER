@@ -48,7 +48,7 @@ if env_file.exists():
             line = line.strip()
             if line and not line.startswith('#') and '=' in line:
                 key, value = line.split('=', 1)
-                os.environ.setdefault(key.strip(), value.strip())
+                os.environ[key.strip()] = value.strip()
 import re
 import uuid
 import random
@@ -87,9 +87,10 @@ app.secret_key = os.environ.get("SESSION_SECRET", "xpose-secret-key-change-me-20
 app.permanent_session_lifetime = timedelta(hours=12)
 
 # Configuration
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "deepseek")
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "groq")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "") or os.environ.get("GROQ_API_KEY", "") or os.environ.get("OPENAI_API_KEY", "")
-LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
+LLM_MODEL = os.environ.get("LLM_MODEL", "qwen/qwen3-32b")
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 SHODAN_API_KEY = os.environ.get("SHODAN_API_KEY", "")
 DEHASHED_API_KEY = os.environ.get("DEHASHED_API_KEY", "")
@@ -359,6 +360,508 @@ def generate_google_dorks(domain):
         "total": len(all_dorks)
     }
 
+def deep_tech_scan(domain):
+    """
+    Active technology fingerprinting via HTTP headers, HTML analysis,
+    DNS records, SSL cert inspection, and path probing.
+    """
+    import socket, ssl as ssl_lib
+    from urllib.parse import urlparse
+    from concurrent.futures import ThreadPoolExecutor
+
+    results = {
+        "domain": domain,
+        "web_server": [],
+        "frameworks_cms": [],
+        "waf_cdn": [],
+        "programming_languages": [],
+        "javascript_libraries": [],
+        "analytics_tracking": [],
+        "email_infrastructure": [],
+        "cloud_hosting": [],
+        "security_headers": {},
+        "cookies_fingerprint": [],
+        "interesting_paths": [],
+        "dns_intel": {},
+        "ssl_intel": {},
+        "vulnerabilities_indicators": [],
+        "raw_headers": {},
+        "scan_coverage": []
+    }
+
+    session_req = requests.Session()
+    session_req.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    })
+
+    # ── Signature databases ──────────────────────────────────────────────
+    HEADER_SIGS = {
+        "web_server": {
+            "Apache": ["apache"],
+            "Nginx": ["nginx"],
+            "IIS": ["iis", "microsoft-iis"],
+            "LiteSpeed": ["litespeed"],
+            "Caddy": ["caddy"],
+            "OpenResty": ["openresty"],
+            "Gunicorn": ["gunicorn"],
+            "Tomcat": ["apache-coyote", "tomcat"],
+            "Jetty": ["jetty"],
+            "Node.js": ["node.js", "express"],
+        },
+        "waf_cdn": {
+            "Cloudflare": ["cloudflare", "cf-ray", "__cfduid", "cf-cache-status"],
+            "AWS CloudFront": ["cloudfront", "x-amz-cf-id", "x-amz-cf-pop"],
+            "AWS ALB": ["awselb", "x-amzn-trace-id"],
+            "Akamai": ["akamai", "x-check-cacheable", "x-akamai-transformed"],
+            "Fastly": ["fastly", "x-fastly-request-id", "via: 1.1 varnish"],
+            "Sucuri": ["sucuri", "x-sucuri-id"],
+            "Imperva/Incapsula": ["incapsula", "x-iinfo", "_incap_"],
+            "F5 BIG-IP": ["bigipserver", "f5", "ts0"],
+            "Barracuda": ["barra_counter_session"],
+            "Varnish": ["x-varnish", "via.*varnish"],
+            "Azure CDN": ["x-msedge-ref", "x-ec-custom-error"],
+            "ModSecurity": ["mod_security", "modsecurity"],
+        },
+        "programming_languages": {
+            "PHP": ["x-powered-by: php", "phpsessid"],
+            "ASP.NET": ["x-powered-by: asp.net", "x-aspnet-version", "asp.net_sessionid"],
+            "ASP.NET Core": ["x-powered-by: asp.net core"],
+            "Java": ["jsessionid", "x-powered-by: servlet"],
+            "Ruby on Rails": ["x-runtime", "x-powered-by: phusion passenger"],
+            "Python/Django": ["csrftoken", "x-powered-by: wsgi"],
+            "Python/Flask": ["werkzeug"],
+            "Go": ["x-powered-by: go"],
+            "ColdFusion": ["cfid", "cftoken", "jrun"],
+        },
+        "frameworks_cms": {
+            "WordPress": ["wp-content", "wp-includes", "wordpress"],
+            "Drupal": ["drupal", "x-drupal-cache", "x-generator: drupal"],
+            "Joomla": ["joomla", "/components/com_"],
+            "Magento": ["magento", "x-magento", "mage-"],
+            "Shopify": ["shopify", "x-shopify"],
+            "Wix": ["x-wix-", "wixsite"],
+            "Squarespace": ["squarespace"],
+            "Ghost": ["ghost", "x-ghost-cache"],
+            "Laravel": ["laravel_session", "x-powered-by: laravel"],
+            "Django": ["django", "csrfmiddlewaretoken"],
+            "Next.js": ["x-nextjs", "x-next-cache", "__nextjs"],
+            "Nuxt.js": ["x-nuxt"],
+            "Spring Boot": ["x-application-context"],
+            "Strapi": ["x-powered-by: strapi"],
+        }
+    }
+
+    HTML_SCRIPT_SIGS = {
+        "javascript_libraries": {
+            "jQuery": ["jquery", "jquery.min.js", "jquery.js"],
+            "React": ["react.js", "react.min.js", "react-dom", "_react"],
+            "Angular": ["angular.js", "angular.min.js", "ng-version", "@angular"],
+            "Vue.js": ["vue.js", "vue.min.js", "vue@", "__vue__"],
+            "Bootstrap": ["bootstrap.js", "bootstrap.min.js", "bootstrap.css"],
+            "Lodash": ["lodash.js", "lodash.min.js"],
+            "Moment.js": ["moment.js", "moment.min.js"],
+            "D3.js": ["d3.js", "d3.min.js"],
+            "Three.js": ["three.js", "three.min.js"],
+            "Axios": ["axios.min.js", "axios.js"],
+            "Webpack": ["webpack", "__webpack_require__"],
+            "Next.js": ["/_next/", "__NEXT_DATA__"],
+            "Nuxt.js": ["/_nuxt/", "__nuxt"],
+            "Ember.js": ["ember.js", "Ember.VERSION"],
+            "Backbone.js": ["backbone.js", "backbone.min.js"],
+        },
+        "analytics_tracking": {
+            "Google Analytics (GA4)": ["gtag(", "googletagmanager", "G-"],
+            "Google Analytics (UA)": ["google-analytics.com/analytics.js", "UA-"],
+            "Google Tag Manager": ["googletagmanager.com/gtm.js"],
+            "Facebook Pixel": ["facebook.net/en_US/fbevents.js", "fbq("],
+            "HubSpot": ["js.hs-scripts.com", "hubspot", "hs-analytics"],
+            "Hotjar": ["hotjar", "hjid"],
+            "Mixpanel": ["mixpanel"],
+            "Segment": ["segment.com", "analytics.js"],
+            "Heap": ["heapanalytics", "heap.load"],
+            "Intercom": ["intercomcdn", "intercom"],
+            "Zendesk": ["zdassets.com", "zopim"],
+            "Drift": ["drift.com", "drift.js"],
+            "Freshdesk": ["freshdesk", "freshwidget"],
+            "Sentry": ["sentry.io", "sentry-cdn"],
+            "New Relic": ["newrelic.js", "newrelic.com"],
+            "Datadog": ["datadog", "dd-rum"],
+        },
+        "frameworks_cms": {
+            "WordPress": ["wp-content", "wp-includes", "wp-json", "/wp-admin"],
+            "Drupal": ["/sites/default/files", "drupal.js", "Drupal.settings"],
+            "Joomla": ["/components/com_", "joomla"],
+            "Magento": ["/skin/frontend/", "/js/varien/", "Magento"],
+            "Shopify": ["cdn.shopify.com", "Shopify.theme"],
+            "Wix": ["wixstatic.com", "wix-warmup-data"],
+            "Squarespace": ["squarespace-cdn.com", "Static.SQUARESPACE_CONTEXT"],
+            "Ghost": ["ghost-sdk", "content/themes"],
+            "Webflow": ["webflow.js", "wf-form"],
+            "Strapi": ["strapi"],
+        }
+    }
+
+    META_SIGS = {
+        "WordPress": ["wordpress"],
+        "Drupal": ["drupal"],
+        "Joomla": ["joomla"],
+        "TYPO3": ["typo3"],
+        "Wix": ["wix.com"],
+        "Squarespace": ["squarespace"],
+        "Ghost": ["ghost"],
+        "Shopify": ["shopify"],
+    }
+
+    COOKIE_SIGS = {
+        "PHP": ["phpsessid"],
+        "ASP.NET": ["asp.net_sessionid", ".aspxauth"],
+        "Java/JEE": ["jsessionid"],
+        "ColdFusion": ["cfid", "cftoken"],
+        "Ruby on Rails": ["_session_id"],
+        "Laravel": ["laravel_session"],
+        "Django": ["csrftoken", "sessionid"],
+        "WordPress": ["wordpress_logged_in", "wp-settings-"],
+        "Drupal": ["drupal_uid"],
+        "Magento": ["frontend", "mage-cache-sessid"],
+    }
+
+    DNS_MX_SIGS = {
+        "Microsoft 365": ["protection.outlook.com", "mail.protection.outlook.com"],
+        "Google Workspace": ["google.com", "googlemail.com", "aspmx.l.google.com"],
+        "Proofpoint": ["pphosted.com", "proofpoint.com"],
+        "Mimecast": ["mimecast.com"],
+        "Barracuda": ["barracudanetworks.com"],
+        "IronPort": ["ironport.com"],
+        "Sophos": ["sophos.com", "reflexion.net"],
+        "Postmark": ["mtasv.net"],
+        "SendGrid": ["sendgrid.net"],
+        "Mailchimp": ["mcsv.net"],
+        "Amazon SES": ["amazonses.com"],
+    }
+
+    DNS_TXT_SIGS = {
+        "Salesforce": ["salesforce", "_sf-", "pardot"],
+        "HubSpot": ["hubspot"],
+        "Zendesk": ["zendesk"],
+        "Google Workspace": ["google-site-verification"],
+        "Microsoft 365": ["MS=ms", "v=spf1.*include:spf.protection.outlook"],
+        "Atlassian": ["atlassian-domain-verification"],
+        "Stripe": ["stripe-verification"],
+        "Twilio SendGrid": ["sendgrid.net", "smtpapi"],
+        "Mailchimp": ["mailchimp"],
+        "Docusign": ["docusign"],
+        "Adobe": ["adobe-idp-site-verification"],
+        "Facebook": ["facebook-domain-verification"],
+        "SPF Configured": ["v=spf1"],
+        "DMARC Configured": ["v=DMARC1"],
+    }
+
+    INTERESTING_PATHS = [
+        ("/robots.txt", "Robots.txt"),
+        ("/.well-known/security.txt", "Security.txt"),
+        ("/.well-known/change-password", "Change-password"),
+        ("/sitemap.xml", "Sitemap"),
+        ("/crossdomain.xml", "Crossdomain policy"),
+        ("/phpinfo.php", "PHPInfo exposed"),
+        ("/wp-login.php", "WordPress login"),
+        ("/wp-json/wp/v2/users", "WordPress user enum"),
+        ("/administrator/", "Joomla admin"),
+        ("/user/login", "Drupal login"),
+        ("/admin", "Admin panel"),
+        ("/login", "Login page"),
+        ("/api", "API endpoint"),
+        ("/api/v1", "API v1"),
+        ("/api/v2", "API v2"),
+        ("/swagger-ui.html", "Swagger UI"),
+        ("/swagger.json", "Swagger spec"),
+        ("/openapi.json", "OpenAPI spec"),
+        ("/actuator", "Spring Actuator"),
+        ("/actuator/env", "Spring Actuator env (sensitive!)"),
+        ("/actuator/health", "Spring Actuator health"),
+        ("/.git/HEAD", "Git repo exposed!"),
+        ("/.env", ".env file exposed!"),
+        ("/config.php", "Config PHP exposed"),
+        ("/web.config", "Web.config exposed"),
+        ("/elmah.axd", "ELMAH error log"),
+        ("/trace.axd", "Trace.axd"),
+    ]
+
+    HIGH_RISK_PATHS = [
+        "/.git/HEAD", "/.env", "/phpinfo.php", "/actuator/env",
+        "/elmah.axd", "/trace.axd", "/config.php", "/web.config",
+        "/wp-json/wp/v2/users"
+    ]
+
+    def _normalize_header_val(v):
+        return v.lower() if v else ""
+
+    def _match_sigs(text, sig_dict):
+        matched = set()
+        text_lower = text.lower()
+        for name, patterns in sig_dict.items():
+            for pat in patterns:
+                if pat.lower() in text_lower:
+                    matched.add(name)
+                    break
+        return list(matched)
+
+    # ── 1. HTTP fetch (www + apex) ────────────────────────────────────────
+    targets_to_try = [f"https://{domain}", f"https://www.{domain}", f"http://{domain}"]
+    resp = None
+    final_url = None
+    for url in targets_to_try:
+        try:
+            r = session_req.get(url, timeout=12, verify=False, allow_redirects=True, stream=False)
+            resp = r
+            final_url = r.url
+            results["scan_coverage"].append(f"HTTP fetch: {url} → {r.status_code}")
+            break
+        except Exception as e:
+            results["scan_coverage"].append(f"HTTP fetch failed: {url} ({str(e)[:60]})")
+
+    if resp is not None:
+        headers = dict(resp.headers)
+        headers_lower = {k.lower(): v.lower() for k, v in headers.items()}
+        results["raw_headers"] = {k: v for k, v in headers.items() if k.lower() not in ["set-cookie"]}
+        html_content = resp.text[:200000]  # cap at 200KB
+
+        # ── Security headers audit ────────────────────────────────────
+        sec_checks = {
+            "Strict-Transport-Security": "strict-transport-security",
+            "Content-Security-Policy": "content-security-policy",
+            "X-Frame-Options": "x-frame-options",
+            "X-Content-Type-Options": "x-content-type-options",
+            "Referrer-Policy": "referrer-policy",
+            "Permissions-Policy": "permissions-policy",
+            "X-XSS-Protection": "x-xss-protection",
+        }
+        for label, hkey in sec_checks.items():
+            val = headers_lower.get(hkey)
+            results["security_headers"][label] = val if val else "MISSING"
+            if not val:
+                results["vulnerabilities_indicators"].append(f"Missing security header: {label}")
+
+        # ── Cookie fingerprinting ─────────────────────────────────────
+        set_cookie = resp.headers.get("Set-Cookie", "") + " ".join(
+            v for k, v in headers.items() if k.lower() == "set-cookie"
+        )
+        cookies_str = set_cookie.lower()
+        for tech, cookie_names in COOKIE_SIGS.items():
+            for cn in cookie_names:
+                if cn in cookies_str:
+                    if tech not in results["cookies_fingerprint"]:
+                        results["cookies_fingerprint"].append(tech)
+
+        # ── Header-based tech detection ───────────────────────────────
+        all_header_text = " ".join(f"{k}: {v}" for k, v in headers_lower.items())
+        # Also check cookies string
+        combined_headers_text = all_header_text + " " + cookies_str
+
+        for category, sig_dict in HEADER_SIGS.items():
+            for tech, patterns in sig_dict.items():
+                for pat in patterns:
+                    if pat.lower() in combined_headers_text:
+                        lst = results.get(category, [])
+                        if tech not in lst:
+                            lst.append(tech)
+                            results[category] = lst
+                        break
+
+        # Server header
+        server_val = headers_lower.get("server", "")
+        if server_val and server_val not in ["", "unknown"]:
+            results["scan_coverage"].append(f"Server header: {headers.get('Server', '')}")
+
+        # X-Powered-By
+        xpb = headers_lower.get("x-powered-by", "")
+        if xpb:
+            results["scan_coverage"].append(f"X-Powered-By: {xpb}")
+            results["vulnerabilities_indicators"].append(f"X-Powered-By disclosed: {xpb}")
+
+        # ── HTML signature matching ────────────────────────────────────
+        for category, sig_dict in HTML_SCRIPT_SIGS.items():
+            for tech, patterns in sig_dict.items():
+                for pat in patterns:
+                    if pat.lower() in html_content.lower():
+                        lst = results.get(category, [])
+                        if tech not in lst:
+                            lst.append(tech)
+                            results[category] = lst
+                        break
+
+        # ── Meta generator tag ────────────────────────────────────────
+        import re as _re
+        meta_gen = _re.findall(r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']([^"\']+)["\']', html_content, _re.I)
+        meta_gen += _re.findall(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']generator["\']', html_content, _re.I)
+        for gen in meta_gen:
+            results["scan_coverage"].append(f"Meta generator: {gen}")
+            for cms, kws in META_SIGS.items():
+                if any(kw.lower() in gen.lower() for kw in kws):
+                    if cms not in results["frameworks_cms"]:
+                        results["frameworks_cms"].append(cms)
+
+        # ── Inline JS globals scan ────────────────────────────────────
+        js_globals = {
+            "React": ["React.createElement", "ReactDOM", "__REACT_"],
+            "Angular": ["ng-version", "angular.module", "platformBrowserDynamic"],
+            "Vue.js": ["new Vue(", "createApp(", "__VUE__"],
+            "Ember.js": ["Ember.Application"],
+            "Next.js": ["__NEXT_DATA__", "next/dist"],
+            "Nuxt.js": ["__NUXT__", "nuxt"],
+        }
+        for tech, markers in js_globals.items():
+            for m in markers:
+                if m in html_content:
+                    if tech not in results["javascript_libraries"]:
+                        results["javascript_libraries"].append(tech)
+                    break
+
+    # ── 2. DNS records ────────────────────────────────────────────────────
+    def _dns_query(qtype):
+        """Use socket-based approach or subprocess as fallback"""
+        try:
+            import subprocess
+            out = subprocess.run(
+                ["dig", "+short", qtype, domain],
+                capture_output=True, text=True, timeout=8
+            ).stdout.strip()
+            return [l.strip() for l in out.splitlines() if l.strip()] if out else []
+        except Exception:
+            return []
+
+    mx_records = _dns_query("MX")
+    txt_records = _dns_query("TXT")
+    ns_records = _dns_query("NS")
+    a_records = _dns_query("A")
+
+    results["dns_intel"]["mx"] = mx_records[:10]
+    results["dns_intel"]["txt"] = [t for t in txt_records[:20] if len(t) < 300]
+    results["dns_intel"]["ns"] = ns_records[:6]
+    results["dns_intel"]["a"] = a_records[:8]
+    results["scan_coverage"].append(f"DNS: {len(mx_records)} MX, {len(txt_records)} TXT, {len(ns_records)} NS")
+
+    mx_text = " ".join(mx_records).lower()
+    for provider, patterns in DNS_MX_SIGS.items():
+        if any(p.lower() in mx_text for p in patterns):
+            if provider not in results["email_infrastructure"]:
+                results["email_infrastructure"].append(provider)
+
+    txt_text = " ".join(txt_records).lower()
+    for service, patterns in DNS_TXT_SIGS.items():
+        if any(p.lower() in txt_text for p in patterns):
+            if service not in results["dns_intel"].get("services_confirmed", []):
+                results["dns_intel"].setdefault("services_confirmed", []).append(service)
+
+    # NS-based cloud/hosting detection
+    ns_text = " ".join(ns_records).lower()
+    ns_cloud_sigs = {
+        "AWS Route 53": ["awsdns"],
+        "Cloudflare DNS": ["cloudflare.com"],
+        "Google Cloud DNS": ["googledomains", "cloud.google"],
+        "Azure DNS": ["azure-dns"],
+        "Namecheap": ["namecheaphosting", "registrar-servers"],
+        "GoDaddy": ["domaincontrol.com"],
+    }
+    for provider, pats in ns_cloud_sigs.items():
+        if any(p in ns_text for p in pats):
+            if provider not in results["cloud_hosting"]:
+                results["cloud_hosting"].append(provider)
+
+    # SPF/DMARC presence
+    if "v=spf1" not in txt_text:
+        results["vulnerabilities_indicators"].append("No SPF record — email spoofing possible")
+    if "v=dmarc1" not in txt_text:
+        results["vulnerabilities_indicators"].append("No DMARC record — phishing risk elevated")
+
+    # ── 3. SSL certificate inspection ────────────────────────────────────
+    try:
+        ctx = ssl_lib.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl_lib.CERT_NONE
+        with socket.create_connection((domain, 443), timeout=8) as sock:
+            with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
+                cert = ssock.getpeercert()
+                if cert:
+                    subject = dict(x[0] for x in cert.get("subject", []))
+                    issuer = dict(x[0] for x in cert.get("issuer", []))
+                    san_list = [v for t, v in cert.get("subjectAltName", []) if t == "DNS"]
+                    results["ssl_intel"] = {
+                        "subject_cn": subject.get("commonName", ""),
+                        "org": subject.get("organizationName", ""),
+                        "issuer": issuer.get("organizationName", ""),
+                        "valid_from": cert.get("notBefore", ""),
+                        "valid_until": cert.get("notAfter", ""),
+                        "san_count": len(san_list),
+                        "san_sample": san_list[:20],
+                    }
+                    # Wildcard cert
+                    if any("*." in s for s in san_list):
+                        results["ssl_intel"]["wildcard"] = True
+                    # Detect hosting from cert org
+                    cert_text = (issuer.get("organizationName", "") + " " + subject.get("organizationName", "")).lower()
+                    cert_cloud_sigs = {
+                        "Let's Encrypt": ["let's encrypt"],
+                        "AWS Certificate Manager": ["amazon"],
+                        "DigiCert": ["digicert"],
+                        "Sectigo": ["sectigo", "comodo"],
+                        "Cloudflare": ["cloudflare"],
+                        "Google Trust Services": ["google trust"],
+                        "GlobalSign": ["globalsign"],
+                    }
+                    for ca, pats in cert_cloud_sigs.items():
+                        if any(p in cert_text for p in pats):
+                            results["ssl_intel"]["ca_provider"] = ca
+                            break
+                    results["scan_coverage"].append(f"SSL cert: CN={results['ssl_intel']['subject_cn']}, {len(san_list)} SANs")
+    except Exception as e:
+        results["ssl_intel"]["error"] = str(e)
+        results["scan_coverage"].append(f"SSL inspection failed: {str(e)[:60]}")
+
+    # ── 4. Path probing (concurrent) ─────────────────────────────────────
+    base_url = final_url.rstrip("/") if final_url else f"https://{domain}"
+    # Ensure we use the right base
+    parsed = urlparse(base_url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+    def _probe_path(path_tuple):
+        path, label = path_tuple
+        try:
+            r = session_req.get(base_url + path, timeout=6, verify=False, allow_redirects=False)
+            return {"path": path, "label": label, "status": r.status_code, "size": len(r.content)}
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        probe_futures = {ex.submit(_probe_path, pt): pt for pt in INTERESTING_PATHS}
+        for fut in as_completed(probe_futures):
+            r = fut.result()
+            if r and r["status"] in [200, 403, 301, 302]:
+                entry = {
+                    "path": r["path"],
+                    "label": r["label"],
+                    "status": r["status"],
+                    "size": r["size"]
+                }
+                results["interesting_paths"].append(entry)
+                if r["path"] in HIGH_RISK_PATHS and r["status"] == 200:
+                    results["vulnerabilities_indicators"].append(
+                        f"HIGH RISK: {r['label']} accessible at {r['path']} [{r['status']}]"
+                    )
+
+    results["interesting_paths"].sort(key=lambda x: x["status"])
+    results["scan_coverage"].append(f"Path probe: {len(results['interesting_paths'])} responding paths found")
+
+    # ── 5. De-duplicate and clean up empty categories ────────────────────
+    for key in ["web_server", "frameworks_cms", "waf_cdn", "programming_languages",
+                "javascript_libraries", "analytics_tracking", "email_infrastructure", "cloud_hosting"]:
+        results[key] = sorted(set(results.get(key, [])))
+
+    results["vulnerabilities_indicators"] = list(dict.fromkeys(results["vulnerabilities_indicators"]))
+    return results
+
+
 def detect_technology_stack(domain, crtsh_data):
     """Detect technology stack from subdomains and common patterns"""
     technologies = {
@@ -587,13 +1090,34 @@ def check_domain_availability(domains):
 
 def detect_industry(company_name, osint_data):
     company_lower = company_name.lower()
-    website_text = osint_data.get("hunter", {}).get("data", {}).get("organization", "").lower() if osint_data.get("hunter", {}).get("data") else ""
-    combined_text = company_lower + " " + website_text
+    # Hunter.io org name
+    hunter_org = osint_data.get("hunter", {}).get("data", {}).get("organization", "").lower() if osint_data.get("hunter", {}).get("data") else ""
+    # Subdomains from crtsh and Shodan often carry strong industry signals
+    crtsh_raw = osint_data.get("crtsh", [])
+    crtsh_text = " ".join(
+        entry.get("name_value", "") if isinstance(entry, dict) else str(entry)
+        for entry in (crtsh_raw[:50] if isinstance(crtsh_raw, list) else [])
+    ).lower()
+    shodan_subs = osint_data.get("shodan", {}).get("domain", {}).get("subdomains", [])
+    shodan_text = " ".join(shodan_subs[:50]).lower()
+    # Detected technology stack
+    tech_detected = osint_data.get("technology", {}).get("detected", {})
+    tech_text = " ".join(
+        item for values in tech_detected.values() if isinstance(values, list) for item in values
+    ).lower()
+    # Attack surface keywords
+    attack_surface = " ".join(osint_data.get("technology", {}).get("attack_surface", [])[:30]).lower()
+    combined_text = " ".join([company_lower, hunter_org, crtsh_text, shodan_text, tech_text, attack_surface])
+    # Score each industry by keyword hit count to pick the strongest match
+    best_profile = None
+    best_score = 0
     for industry_key, profile in INDUSTRY_PROFILES.items():
         if industry_key == "default": continue
-        for keyword in profile["keywords"]:
-            if keyword in combined_text: return profile
-    return INDUSTRY_PROFILES["default"]
+        score = sum(1 for kw in profile["keywords"] if kw in combined_text)
+        if score > best_score:
+            best_score = score
+            best_profile = profile
+    return best_profile if best_profile else INDUSTRY_PROFILES["default"]
 
 def calculate_impact_analysis(target, osint_data, industry_profile):
     """Calculate comprehensive impact analysis based on OSINT findings"""
@@ -607,7 +1131,19 @@ def calculate_impact_analysis(target, osint_data, industry_profile):
     # Count subdomains from multiple sources
     shodan_subs = len(osint_data.get("shodan", {}).get("domain", {}).get("subdomains", []))
     crtsh_raw = osint_data.get("crtsh", [])
-    crtsh_subs = len(crtsh_raw) if isinstance(crtsh_raw, list) else 0
+    # Fix: deduplicate crtsh entries — each record's name_value can contain multiple newline-separated subdomains
+    if isinstance(crtsh_raw, list):
+        unique_crtsh = set()
+        for entry in crtsh_raw:
+            if isinstance(entry, dict):
+                for name in entry.get("name_value", "").split("\n"):
+                    if name.strip():
+                        unique_crtsh.add(name.strip().lower())
+            elif isinstance(entry, str) and entry.strip():
+                unique_crtsh.add(entry.strip().lower())
+        crtsh_subs = len(unique_crtsh)
+    else:
+        crtsh_subs = 0
     subdomains_count = max(shodan_subs, crtsh_subs)
     
     # Technology detection adds to attack surface
@@ -891,10 +1427,24 @@ def load_knowledge():
         "playbooks/Exfiltration_Playbook.md"
     ]
     
+    # Limit context size based on provider
+    if LLM_PROVIDER == "ollama":
+        max_knowledge = 25000  # ~6K tokens - keeps Ollama responsive on CPU
+        max_per_file = 3000
+        max_priority_file = 5000
+    elif LLM_PROVIDER == "groq":
+        max_knowledge = 40000  # ~10K tokens - stays under Groq payload limit
+        max_per_file = 4000
+        max_priority_file = 6000
+    else:
+        max_knowledge = 100000
+        max_per_file = 8000
+        max_priority_file = 15000
+    
     for pf in priority_files:
         fp = KNOWLEDGE_PATH / pf
         if fp.exists():
-            try: knowledge_sections.append(f"\n### {fp.stem}\n{fp.read_text()[:15000]}")
+            try: knowledge_sections.append(f"\n### {fp.stem}\n{fp.read_text()[:max_priority_file]}")
             except: pass
     
     # Scan ALL subdirectories for .md files
@@ -902,15 +1452,15 @@ def load_knowledge():
         if subdir.is_dir():
             for f in subdir.glob("*.md"):
                 if f.name not in [p.split("/")[-1] for p in priority_files]:
-                    try: knowledge_sections.append(f"\n### {f.stem}\n{f.read_text()[:8000]}")
+                    try: knowledge_sections.append(f"\n### {f.stem}\n{f.read_text()[:max_per_file]}")
                     except: pass
     
     # Also scan root knowledge folder
     for f in KNOWLEDGE_PATH.glob("*.md"):
-        try: knowledge_sections.append(f"\n### {f.stem}\n{f.read_text()[:8000]}")
+        try: knowledge_sections.append(f"\n### {f.stem}\n{f.read_text()[:max_per_file]}")
         except: pass
     
-    _knowledge_cache = "\n".join(knowledge_sections)[:100000]  # Increased limit
+    _knowledge_cache = "\n".join(knowledge_sections)[:max_knowledge]
     return _knowledge_cache
 
 APT_SYSTEM_PROMPT = '''
@@ -1189,19 +1739,45 @@ Guide the operator through systematic testing with professional depth.
 # LLM Functions
 def call_llm_streaming(messages, max_tokens=None):
     if max_tokens is None:
-        max_tokens = 6000 if IS_VERCEL else 16000
-    if not LLM_API_KEY:
-        raise Exception("LLM API key not configured. Add LLM_API_KEY to .env file")
+        if LLM_PROVIDER == "groq":
+            max_tokens = 6000   # Groq enforces input+output <= context window
+        else:
+            max_tokens = 6000 if IS_VERCEL else 16000
     
-    if LLM_PROVIDER == "deepseek":
+    if LLM_PROVIDER == "ollama":
+        url = f"{OLLAMA_BASE_URL}/v1/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        model = LLM_MODEL or "qwen3:8b"
+    elif LLM_PROVIDER == "deepseek":
+        if not LLM_API_KEY:
+            raise Exception("LLM API key not configured. Add LLM_API_KEY to .env file")
         url, headers, model = "https://api.deepseek.com/chat/completions", {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}, LLM_MODEL or "deepseek-chat"
     elif LLM_PROVIDER == "groq":
-        url, headers, model = "https://api.groq.com/openai/v1/chat/completions", {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}, LLM_MODEL or "llama-3.3-70b-versatile"
+        if not LLM_API_KEY:
+            raise Exception("LLM API key not configured. Add LLM_API_KEY to .env file")
+        url, headers, model = "https://api.groq.com/openai/v1/chat/completions", {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}, LLM_MODEL or "qwen/qwen3-32b"
     else:
+        if not LLM_API_KEY:
+            raise Exception("LLM API key not configured. Add LLM_API_KEY to .env file")
         url, headers, model = "https://api.openai.com/v1/chat/completions", {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}, LLM_MODEL or "gpt-4"
     
     try:
-        response = requests.post(url, headers=headers, json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.8, "stream": True}, stream=True, timeout=180)
+        payload = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.8, "stream": True}
+        payload_size = len(json.dumps(payload))
+        print(f"[LLM] Streaming payload: {payload_size} bytes, {len(messages)} messages, provider={LLM_PROVIDER}")
+        
+        if LLM_PROVIDER == "groq" and payload_size > 60000:
+            print(f"[!] Payload too large for Groq ({payload_size} bytes), truncating...")
+            system_msg = messages[0] if messages and messages[0]["role"] == "system" else None
+            if system_msg and len(system_msg["content"]) > 20000:
+                system_msg["content"] = system_msg["content"][:20000] + "\n...[truncated for size]..."
+            other_msgs = messages[1:] if system_msg else messages
+            messages = ([system_msg] if system_msg else []) + other_msgs[-4:]
+            payload = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.8, "stream": True}
+            print(f"[LLM] Truncated payload: {len(json.dumps(payload))} bytes, {len(messages)} messages")
+        
+        timeout = 600 if LLM_PROVIDER == "ollama" else 300
+        response = requests.post(url, headers=headers, json=payload, stream=True, timeout=timeout)
         if response.status_code == 401:
             raise Exception(f"401 Unauthorized: Invalid or expired {LLM_PROVIDER.upper()} API key")
         elif response.status_code == 402:
@@ -1212,7 +1788,7 @@ def call_llm_streaming(messages, max_tokens=None):
     except requests.exceptions.HTTPError as e:
         raise Exception(f"{LLM_PROVIDER.upper()} API Error: {str(e)}")
     except requests.exceptions.ConnectionError:
-        raise Exception(f"Connection failed to {LLM_PROVIDER.upper()} API")
+        raise Exception(f"Connection failed to {LLM_PROVIDER.upper()} API. {'Is Ollama running? Start it with: ollama serve' if LLM_PROVIDER == 'ollama' else ''}")
     except requests.exceptions.Timeout:
         raise Exception(f"Request timeout to {LLM_PROVIDER.upper()} API")
     
@@ -1226,14 +1802,21 @@ def call_llm_streaming(messages, max_tokens=None):
                 except: pass
 
 def call_llm_sync(messages, max_tokens=16000):
-    if not LLM_API_KEY:
-        raise Exception("LLM API key not configured. Add LLM_API_KEY to .env file")
-    
-    if LLM_PROVIDER == "deepseek":
+    if LLM_PROVIDER == "ollama":
+        url = f"{OLLAMA_BASE_URL}/v1/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        model = LLM_MODEL or "qwen3:8b"
+    elif LLM_PROVIDER == "deepseek":
+        if not LLM_API_KEY:
+            raise Exception("LLM API key not configured. Add LLM_API_KEY to .env file")
         url, headers, model = "https://api.deepseek.com/chat/completions", {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}, LLM_MODEL or "deepseek-chat"
     elif LLM_PROVIDER == "groq":
-        url, headers, model = "https://api.groq.com/openai/v1/chat/completions", {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}, LLM_MODEL or "llama-3.3-70b-versatile"
+        if not LLM_API_KEY:
+            raise Exception("LLM API key not configured. Add LLM_API_KEY to .env file")
+        url, headers, model = "https://api.groq.com/openai/v1/chat/completions", {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}, LLM_MODEL or "qwen/qwen3-32b"
     else:
+        if not LLM_API_KEY:
+            raise Exception("LLM API key not configured. Add LLM_API_KEY to .env file")
         url, headers, model = "https://api.openai.com/v1/chat/completions", {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}, LLM_MODEL or "gpt-4"
     
     for attempt in range(3):
@@ -1247,7 +1830,23 @@ def call_llm_sync(messages, max_tokens=16000):
                     system_msg["content"] = system_msg["content"][:15000] + "\n...[truncated]..."
                 print(f"[*] Retry {attempt}: reduced to {len(messages)} messages")
             
-            response = requests.post(url, headers=headers, json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.8}, timeout=180)
+            payload = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.8}
+            payload_size = len(json.dumps(payload))
+            print(f"[LLM] Sync payload: {payload_size} bytes, {len(messages)} messages, provider={LLM_PROVIDER}")
+            
+            # Groq has a ~4MB payload limit - auto-truncate if over 3.5MB
+            if LLM_PROVIDER == "groq" and payload_size > 3500000:
+                print(f"[!] Payload too large for Groq ({payload_size} bytes), truncating...")
+                system_msg = messages[0] if messages and messages[0]["role"] == "system" else None
+                if system_msg and len(system_msg["content"]) > 20000:
+                    system_msg["content"] = system_msg["content"][:20000] + "\n...[truncated for size]..."
+                other_msgs = messages[1:] if system_msg else messages
+                messages = ([system_msg] if system_msg else []) + other_msgs[-4:]
+                payload = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.8}
+                print(f"[LLM] Truncated payload: {len(json.dumps(payload))} bytes, {len(messages)} messages")
+            
+            timeout = 600 if LLM_PROVIDER == "ollama" else 300
+            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
             if response.status_code == 401:
                 raise Exception(f"401 Unauthorized: Invalid or expired {LLM_PROVIDER.upper()} API key")
             elif response.status_code == 402:
@@ -1262,7 +1861,7 @@ def call_llm_sync(messages, max_tokens=16000):
                 continue
             raise Exception(f"{LLM_PROVIDER.upper()} API Error: {str(e)}")
         except requests.exceptions.ConnectionError:
-            raise Exception(f"Connection failed to {LLM_PROVIDER.upper()} API")
+            raise Exception(f"Connection failed to {LLM_PROVIDER.upper()} API. {'Is Ollama running? Start it with: ollama serve' if LLM_PROVIDER == 'ollama' else ''}")
         except requests.exceptions.Timeout:
             raise Exception(f"Request timeout to {LLM_PROVIDER.upper()} API")
     raise Exception(f"Failed after 3 retries - context too large for {LLM_PROVIDER.upper()}")
@@ -2115,10 +2714,17 @@ def chat(project_id):
                 knowledge=knowledge
             )
         
+        # Hard cap system prompt for providers with payload limits
+        if LLM_PROVIDER in ("groq", "ollama"):
+            max_sys = 30000 if LLM_PROVIDER == "groq" else 15000
+            if len(system_prompt) > max_sys:
+                print(f"[!] System prompt too large ({len(system_prompt)} chars), truncating to {max_sys}")
+                system_prompt = system_prompt[:max_sys] + "\n...[truncated for API limits]..."
+        
         messages = [{"role": "system", "content": system_prompt}]
         
-        # Smart history truncation: limit total characters to ~60k (~15k tokens)
-        MAX_HISTORY_CHARS = 60000
+        # Smart history truncation: limit based on provider
+        MAX_HISTORY_CHARS = 20000 if LLM_PROVIDER in ("groq", "ollama") else 60000
         recent_history = history[-30:]
         total_chars = 0
         trimmed_history = []
@@ -2208,6 +2814,23 @@ def quick_osint():
     industry = detect_industry(target, osint_data)
     impact_analysis = calculate_impact_analysis(target, osint_data, industry)
     return jsonify({"osint": osint_data, "impact_analysis": impact_analysis})
+
+@app.route("/api/tech-scan", methods=["POST"])
+def api_tech_scan():
+    """Deep active technology fingerprinting endpoint"""
+    data = request.get_json()
+    target = data.get("target", "").strip()
+    if not target:
+        return jsonify({"error": "Target domain required"}), 400
+    # Strip protocol/path, get clean domain
+    import re as _re
+    domain_match = _re.search(r'(?:https?://)?(?:www\.)?([a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,})', target)
+    domain = domain_match.group(1) if domain_match else target
+    try:
+        scan_results = deep_tech_scan(domain)
+        return jsonify({"success": True, "domain": domain, "results": scan_results})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/frameworks", methods=["GET"])
 def get_frameworks():
@@ -3024,6 +3647,10 @@ def handle_telegram_message(message):
         impact_analysis = json.loads(project.get("impact_analysis", "{}")) if project.get("impact_analysis") else {}
         
         system_prompt = APT_SYSTEM_PROMPT.format(target_info=f"Target: {project['target']}", osint_data=format_osint_for_prompt(osint_data), impact_analysis=format_impact_for_prompt(impact_analysis), knowledge=load_knowledge())
+        if LLM_PROVIDER in ("groq", "ollama"):
+            max_sys = 30000 if LLM_PROVIDER == "groq" else 15000
+            if len(system_prompt) > max_sys:
+                system_prompt = system_prompt[:max_sys] + "\n...[truncated for API limits]..."
         messages = [{"role": "system", "content": system_prompt}]
         for h in history[-20:]: messages.append({"role": h["role"], "content": h["content"]})
         messages.append({"role": "user", "content": text})
@@ -3069,7 +3696,7 @@ if __name__ == "__main__":
 ================================================================================
    Features: Auto-Recon | Impact Analysis | Attack Paths | Breach Calculator
 ================================================================================
-   LLM: {LLM_PROVIDER:<12} {'OK' if LLM_API_KEY else 'NO'} | Shodan: {'OK' if SHODAN_API_KEY else 'NO'} | DeHashed: {'OK' if DEHASHED_API_KEY else 'NO'} | Hunter: {'OK' if HUNTER_API_KEY else 'NO'}
+   Model:{LLM_MODEL} LLM: {LLM_PROVIDER:<12} {'OK' if LLM_API_KEY else 'NO'} | Shodan: {'OK' if SHODAN_API_KEY else 'NO'} | DeHashed: {'OK' if DEHASHED_API_KEY else 'NO'} | Hunter: {'OK' if HUNTER_API_KEY else 'NO'}
    Telegram: {'OK' if TELEGRAM_BOT_TOKEN else 'NO'} | Knowledge Base: {kb_count} files
 ================================================================================
 """)

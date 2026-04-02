@@ -227,11 +227,22 @@
                 </div>
             </div>
             
-            <!-- Tech Stack Tab -->
+            <!-- Tech Stack Tab — Active Deep Scanner -->
             <div id="tab-tech" class="osint-tab hidden">
-                <div id="techStack" class="grid grid-cols-3 gap-4">
-                    <p class="text-gray-500 col-span-3">Run OSINT scan on a project first...</p>
+                <!-- Scanner input -->
+                <div class="flex gap-2 mb-4">
+                    <input type="text" id="techScanDomain" class="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono" placeholder="target-company.com">
+                    <button onclick="runDeepTechScan()" id="techScanBtn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded transition text-sm font-medium flex items-center gap-2">
+                        <i class="fas fa-radar"></i> Deep Scan
+                    </button>
                 </div>
+                <!-- Status bar -->
+                <div id="techScanStatus" class="hidden mb-3 text-xs text-cyan-400 flex items-center gap-2">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span id="techScanStatusText">Initializing scanner...</span>
+                </div>
+                <!-- Results -->
+                <div id="techScanResults" class="space-y-3 max-h-[520px] overflow-y-auto pr-1"></div>
             </div>
             
             <button onclick="hideOsintModal()" class="mt-4 w-full py-2.5 bg-gray-800 hover:bg-gray-700 rounded-lg transition">Close</button>
@@ -679,7 +690,235 @@
             
             document.getElementById('techStack').innerHTML = html || '<p class="text-gray-500 col-span-3">No technologies detected</p>';
         }
-        
+
+        // ── Deep Tech Scanner ─────────────────────────────────────────────
+        async function runDeepTechScan() {
+            var domain = document.getElementById('techScanDomain').value.trim();
+            if (!domain) {
+                // Try to pre-fill from current project
+                if (currentProject && currentProject.target) {
+                    domain = currentProject.target;
+                    document.getElementById('techScanDomain').value = domain;
+                } else {
+                    alert('Enter a target domain');
+                    return;
+                }
+            }
+
+            var btn = document.getElementById('techScanBtn');
+            var status = document.getElementById('techScanStatus');
+            var statusText = document.getElementById('techScanStatusText');
+            var results = document.getElementById('techScanResults');
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
+            status.classList.remove('hidden');
+            results.innerHTML = '';
+
+            var steps = [
+                'Fetching HTTP headers & response...',
+                'Fingerprinting web server & WAF...',
+                'Parsing HTML for framework signatures...',
+                'Analysing JavaScript libraries...',
+                'Querying DNS records (MX, TXT, NS)...',
+                'Inspecting SSL certificate...',
+                'Probing interesting paths...',
+                'Compiling results...'
+            ];
+            var stepIdx = 0;
+            statusText.textContent = steps[0];
+            var ticker = setInterval(function() {
+                stepIdx = (stepIdx + 1) % steps.length;
+                statusText.textContent = steps[stepIdx];
+            }, 1800);
+
+            try {
+                var res = await fetch('/api/tech-scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target: domain })
+                });
+                var data = await res.json();
+                clearInterval(ticker);
+                status.classList.add('hidden');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-radar"></i> Deep Scan';
+
+                if (data.error) {
+                    results.innerHTML = '<p class="text-red-400"><i class="fas fa-exclamation-triangle mr-1"></i>' + data.error + '</p>';
+                    return;
+                }
+                renderTechScanResults(data.results, data.domain);
+            } catch(e) {
+                clearInterval(ticker);
+                status.classList.add('hidden');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-radar"></i> Deep Scan';
+                results.innerHTML = '<p class="text-red-400"><i class="fas fa-exclamation-triangle mr-1"></i>Scan failed: ' + e.message + '</p>';
+            }
+        }
+
+        // Pre-fill domain when tab is opened if a project is active
+        var _origShowOsintTab = showOsintTab;
+        showOsintTab = function(tab) {
+            _origShowOsintTab(tab);
+            if (tab === 'tech' && currentProject && currentProject.target) {
+                var inp = document.getElementById('techScanDomain');
+                if (inp && !inp.value) inp.value = currentProject.target;
+            }
+        };
+
+        function renderTechScanResults(r, domain) {
+            var container = document.getElementById('techScanResults');
+            var html = '';
+
+            // ── Vuln indicators (top banner) ──────────────────────────────
+            var vulns = r.vulnerabilities_indicators || [];
+            if (vulns.length > 0) {
+                html += '<div class="bg-red-900/30 border border-red-700/60 rounded-lg p-3 mb-1">';
+                html += '<div class="text-xs text-red-400 font-bold mb-2"><i class="fas fa-exclamation-triangle mr-1"></i>VULNERABILITY INDICATORS (' + vulns.length + ')</div>';
+                html += '<div class="space-y-1">';
+                vulns.forEach(function(v) {
+                    var isHigh = v.toLowerCase().includes('high risk') || v.toLowerCase().includes('exposed') || v.toLowerCase().includes('spoofing');
+                    html += '<div class="text-xs flex items-start gap-2">' +
+                        '<span class="' + (isHigh ? 'text-red-400' : 'text-yellow-400') + ' mt-0.5">•</span>' +
+                        '<span class="' + (isHigh ? 'text-red-300' : 'text-yellow-300') + '">' + escapeHtml(v) + '</span></div>';
+                });
+                html += '</div></div>';
+            }
+
+            // ── Tech category cards ───────────────────────────────────────
+            var categories = [
+                { key: 'web_server',            label: 'Web Server',           icon: 'fa-server',        color: 'blue'   },
+                { key: 'waf_cdn',               label: 'WAF / CDN',            icon: 'fa-shield-alt',    color: 'green'  },
+                { key: 'frameworks_cms',        label: 'Frameworks & CMS',     icon: 'fa-layer-group',   color: 'purple' },
+                { key: 'programming_languages', label: 'Languages / Runtime',  icon: 'fa-code',          color: 'cyan'   },
+                { key: 'javascript_libraries',  label: 'JavaScript Libraries', icon: 'fa-js',            color: 'yellow' },
+                { key: 'analytics_tracking',    label: 'Analytics & Tracking', icon: 'fa-chart-line',    color: 'orange' },
+                { key: 'email_infrastructure',  label: 'Email Infrastructure', icon: 'fa-envelope',      color: 'pink'   },
+                { key: 'cloud_hosting',         label: 'Cloud / DNS Hosting',  icon: 'fa-cloud',         color: 'sky'    },
+                { key: 'cookies_fingerprint',   label: 'Cookie Fingerprint',   icon: 'fa-cookie',        color: 'amber'  },
+            ];
+
+            html += '<div class="grid grid-cols-2 gap-2">';
+            categories.forEach(function(cat) {
+                var items = r[cat.key] || [];
+                if (items.length === 0) return;
+                html += '<div class="bg-gray-900 rounded-lg p-3">' +
+                    '<div class="text-xs text-' + cat.color + '-400 mb-2 font-semibold"><i class="fas ' + cat.icon + ' mr-1"></i>' + cat.label + '</div>' +
+                    '<div class="space-y-1">';
+                items.forEach(function(item) {
+                    html += '<div class="text-xs text-gray-300 flex items-center gap-1"><span class="text-' + cat.color + '-500">▸</span>' + escapeHtml(item) + '</div>';
+                });
+                html += '</div></div>';
+            });
+            html += '</div>';
+
+            // ── Security headers audit ────────────────────────────────────
+            var secHeaders = r.security_headers || {};
+            if (Object.keys(secHeaders).length > 0) {
+                html += '<div class="bg-gray-900 rounded-lg p-3">';
+                html += '<div class="text-xs text-gray-400 font-semibold mb-2"><i class="fas fa-lock mr-1"></i>SECURITY HEADERS</div>';
+                html += '<div class="grid grid-cols-2 gap-1">';
+                Object.entries(secHeaders).forEach(function(entry) {
+                    var k = entry[0], v = entry[1];
+                    var missing = (v === 'MISSING');
+                    html += '<div class="text-xs flex items-start gap-1">' +
+                        '<span class="' + (missing ? 'text-red-400' : 'text-green-400') + ' mt-0.5">' + (missing ? '✗' : '✓') + '</span>' +
+                        '<span class="' + (missing ? 'text-red-300' : 'text-gray-300') + '">' + escapeHtml(k) + '</span></div>';
+                });
+                html += '</div></div>';
+            }
+
+            // ── Interesting paths ────────────────────────────────────────
+            var paths = r.interesting_paths || [];
+            if (paths.length > 0) {
+                html += '<div class="bg-gray-900 rounded-lg p-3">';
+                html += '<div class="text-xs text-orange-400 font-semibold mb-2"><i class="fas fa-route mr-1"></i>RESPONDING PATHS (' + paths.length + ')</div>';
+                html += '<div class="space-y-1 max-h-40 overflow-y-auto">';
+                paths.forEach(function(p) {
+                    var statusColor = p.status === 200 ? 'text-green-400' : p.status === 403 ? 'text-yellow-400' : 'text-gray-400';
+                    var isRisky = ['/.git/HEAD','/.env','/phpinfo.php','/actuator/env','/elmah.axd','/trace.axd','/config.php','/web.config','/wp-json/wp/v2/users'].includes(p.path);
+                    html += '<div class="text-xs flex items-center gap-2 ' + (isRisky && p.status === 200 ? 'bg-red-900/30 rounded px-1' : '') + '">' +
+                        '<span class="' + statusColor + ' font-mono w-8">' + p.status + '</span>' +
+                        '<span class="font-mono text-gray-400 w-48 truncate">' + escapeHtml(p.path) + '</span>' +
+                        '<span class="text-gray-500">' + escapeHtml(p.label) + '</span>' +
+                        (isRisky && p.status === 200 ? '<span class="text-red-400 ml-auto">⚠ HIGH RISK</span>' : '') +
+                        '</div>';
+                });
+                html += '</div></div>';
+            }
+
+            // ── SSL intel ────────────────────────────────────────────────
+            var ssl = r.ssl_intel || {};
+            if (ssl.subject_cn) {
+                html += '<div class="bg-gray-900 rounded-lg p-3">';
+                html += '<div class="text-xs text-green-400 font-semibold mb-2"><i class="fas fa-certificate mr-1"></i>SSL CERTIFICATE</div>';
+                html += '<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">';
+                if (ssl.subject_cn) html += _sslRow('CN', ssl.subject_cn);
+                if (ssl.org)        html += _sslRow('Org', ssl.org);
+                if (ssl.issuer)     html += _sslRow('CA', ssl.ca_provider || ssl.issuer);
+                if (ssl.valid_until) html += _sslRow('Expires', ssl.valid_until);
+                if (ssl.san_count)  html += _sslRow('SANs', ssl.san_count + (ssl.wildcard ? ' (wildcard ✓)' : ''));
+                html += '</div>';
+                if (ssl.san_sample && ssl.san_sample.length > 0) {
+                    html += '<div class="mt-2 text-xs text-gray-500">SANs sample: ' + ssl.san_sample.slice(0, 8).map(escapeHtml).join(', ') + (ssl.san_count > 8 ? '...' : '') + '</div>';
+                }
+                html += '</div>';
+            }
+
+            // ── DNS intel ───────────────────────────────────────────────
+            var dns = r.dns_intel || {};
+            var dnsServices = dns.services_confirmed || [];
+            if (dnsServices.length > 0 || (dns.mx && dns.mx.length > 0)) {
+                html += '<div class="bg-gray-900 rounded-lg p-3">';
+                html += '<div class="text-xs text-purple-400 font-semibold mb-2"><i class="fas fa-network-wired mr-1"></i>DNS INTELLIGENCE</div>';
+                if (dnsServices.length > 0) {
+                    html += '<div class="text-xs text-gray-400 mb-1">Confirmed services via TXT records:</div>';
+                    html += '<div class="flex flex-wrap gap-1 mb-2">';
+                    dnsServices.forEach(function(s) {
+                        html += '<span class="bg-purple-900/50 text-purple-300 text-xs px-2 py-0.5 rounded">' + escapeHtml(s) + '</span>';
+                    });
+                    html += '</div>';
+                }
+                if (dns.mx && dns.mx.length > 0) {
+                    html += '<div class="text-xs text-gray-500">MX: ' + dns.mx.slice(0, 3).map(escapeHtml).join(' · ') + '</div>';
+                }
+                if (dns.ns && dns.ns.length > 0) {
+                    html += '<div class="text-xs text-gray-500 mt-0.5">NS: ' + dns.ns.slice(0, 3).map(escapeHtml).join(' · ') + '</div>';
+                }
+                html += '</div>';
+            }
+
+            // ── Raw headers (collapsible) ────────────────────────────────
+            var rawH = r.raw_headers || {};
+            if (Object.keys(rawH).length > 0) {
+                html += '<details class="bg-gray-900 rounded-lg p-3">';
+                html += '<summary class="text-xs text-gray-500 cursor-pointer font-semibold"><i class="fas fa-code mr-1"></i>RAW RESPONSE HEADERS (' + Object.keys(rawH).length + ')</summary>';
+                html += '<div class="mt-2 space-y-0.5 font-mono text-xs max-h-48 overflow-y-auto">';
+                Object.entries(rawH).forEach(function(entry) {
+                    html += '<div><span class="text-cyan-600">' + escapeHtml(entry[0]) + ':</span> <span class="text-gray-400">' + escapeHtml(entry[1]) + '</span></div>';
+                });
+                html += '</div></details>';
+            }
+
+            // ── Scan coverage log (collapsible) ──────────────────────────
+            var coverage = r.scan_coverage || [];
+            if (coverage.length > 0) {
+                html += '<details class="bg-gray-900/50 rounded-lg p-3">';
+                html += '<summary class="text-xs text-gray-600 cursor-pointer">Scan coverage log (' + coverage.length + ' entries)</summary>';
+                html += '<div class="mt-2 space-y-0.5 text-xs text-gray-600 max-h-32 overflow-y-auto">';
+                coverage.forEach(function(c) { html += '<div>· ' + escapeHtml(c) + '</div>'; });
+                html += '</div></details>';
+            }
+
+            container.innerHTML = html || '<p class="text-gray-500 text-sm">No results — target may be unreachable.</p>';
+        }
+
+        function _sslRow(label, val) {
+            return '<div class="text-gray-500">' + label + '</div><div class="text-gray-300 truncate">' + escapeHtml(String(val)) + '</div>';
+        }
+
         function escapeHtml(text) {
             var div = document.createElement('div');
             div.textContent = text;
@@ -852,6 +1091,7 @@
                         open_services: services,
                         leaked_credentials: leaks,
                         emails_harvested: emails,
+                        http_live: (currentOsint.http_live && Array.isArray(currentOsint.http_live)) ? currentOsint.http_live.length : (impact.osint_summary ? (impact.osint_summary.http_live || 0) : 0),
                         sources_queried: currentOsint.metadata ? currentOsint.metadata.sources_queried : []
                     };
                     
@@ -1427,7 +1667,8 @@
                 { name: 'Initial Access', value: p.initial_access || 0, color: 'green' },
                 { name: 'Domain Admin', value: p.domain_admin || 0, color: 'yellow' },
                 { name: 'Data Exfil', value: p.data_exfiltration || 0, color: 'purple' },
-                { name: 'Ransomware', value: p.ransomware_deployment || 0, color: 'red' }
+                { name: 'Ransomware', value: p.ransomware_deployment || 0, color: 'red' },
+                { name: 'Full Takeover', value: p.full_takeover || 0, color: 'orange' }
             ];
             
             probs.forEach(function(prob) {
@@ -1476,7 +1717,7 @@
                 html += '<div class="mt-2 text-xs text-gray-500">Sources: ' + sources.join(', ') + '</div>';
             }
             html += '</div>';
-            
+
             // Breach Value
             var bv = impact.breach_value || {};
             if (bv.ransomware_demand_min) {
@@ -1484,9 +1725,22 @@
                     '<div class="text-xs text-red-400 mb-2">ESTIMATED BREACH VALUE</div>' +
                     '<div class="text-sm text-gray-300">Ransomware: <span class="text-red-400">€' + bv.ransomware_demand_min + 'M - €' + bv.ransomware_demand_max + 'M</span></div>' +
                     '<div class="text-sm text-gray-300">Business Impact: <span class="text-yellow-400">€' + bv.business_impact_min + 'M - €' + bv.business_impact_max + 'M</span></div>' +
+                    '<div class="text-sm text-gray-300">Dark Web Data: <span class="text-purple-400">€' + (bv.data_dark_web_min || 0).toLocaleString() + ' - €' + (bv.data_dark_web_max || 0).toLocaleString() + '</span></div>' +
                     '</div>';
             }
-            
+
+            // Industry Intel card
+            var ip = impact.industry_profile || {};
+            if (ip.high_value_data && ip.high_value_data.length > 0) {
+                html += '<div class="bg-blue-900/20 border border-blue-800/50 rounded-lg p-3">' +
+                    '<div class="text-xs text-blue-400 mb-2">INDUSTRY INTEL</div>' +
+                    '<div class="text-xs text-gray-300 mb-1"><span class="text-blue-300">High-Value Data:</span> ' + ip.high_value_data.join(', ') + '</div>' +
+                    '<div class="text-xs text-gray-300 mb-1"><span class="text-yellow-300">Compliance:</span> ' + (ip.compliance_frameworks || []).join(', ') + '</div>' +
+                    '<div class="text-xs text-gray-300 mb-1"><span class="text-red-300">Likely Attackers:</span> ' + (ip.likely_attackers || []).join(', ') + '</div>' +
+                    '<div class="text-xs text-gray-300"><span class="text-gray-400">Critical Systems:</span> ' + (ip.critical_systems || []).join(', ') + '</div>' +
+                    '</div>';
+            }
+
             document.getElementById('impactContent').innerHTML = html;
         }
         
